@@ -1,0 +1,194 @@
+create extension if not exists "pgcrypto";
+
+do $$
+begin
+  create type transaction_type as enum ('income', 'expense');
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  full_name text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.categories (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  type transaction_type not null,
+  color text not null default '#198c7c',
+  icon text,
+  created_at timestamptz not null default now(),
+  unique (user_id, name, type)
+);
+
+create or replace function public.create_default_categories_for_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, full_name)
+  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', new.email))
+  on conflict (id) do nothing;
+
+  insert into public.categories (user_id, name, type, color, icon)
+  values
+    (new.id, 'Comida', 'expense', '#ee6c4d', 'utensils'),
+    (new.id, 'Transporte', 'expense', '#2563eb', 'bus'),
+    (new.id, 'Vivienda', 'expense', '#198c7c', 'home'),
+    (new.id, 'Servicios', 'expense', '#d99f18', 'zap'),
+    (new.id, 'Salud', 'expense', '#dc5538', 'heart-pulse'),
+    (new.id, 'Educacion', 'expense', '#7c3aed', 'graduation-cap'),
+    (new.id, 'Entretenimiento', 'expense', '#0891b2', 'film'),
+    (new.id, 'Ropa', 'expense', '#db2777', 'shirt'),
+    (new.id, 'Deudas', 'expense', '#475569', 'credit-card'),
+    (new.id, 'Otros', 'expense', '#64748b', 'circle-ellipsis'),
+    (new.id, 'Salario', 'income', '#198c7c', 'briefcase'),
+    (new.id, 'Freelance', 'income', '#0f766e', 'laptop'),
+    (new.id, 'Negocio', 'income', '#2563eb', 'store'),
+    (new.id, 'Regalo', 'income', '#d99f18', 'gift'),
+    (new.id, 'Otros', 'income', '#64748b', 'circle-ellipsis')
+  on conflict (user_id, name, type) do nothing;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists create_default_categories_after_signup on auth.users;
+create trigger create_default_categories_after_signup
+after insert on auth.users
+for each row
+execute function public.create_default_categories_for_user();
+
+create table if not exists public.transactions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  category_id uuid references public.categories(id) on delete set null,
+  type transaction_type not null,
+  amount numeric(14, 2) not null check (amount > 0),
+  description text,
+  payment_method text not null default 'cash',
+  transaction_date date not null default current_date,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists categories_user_id_idx on public.categories(user_id);
+create index if not exists categories_user_type_idx on public.categories(user_id, type);
+create index if not exists transactions_user_date_idx on public.transactions(user_id, transaction_date desc);
+create index if not exists transactions_user_type_idx on public.transactions(user_id, type);
+create index if not exists transactions_category_id_idx on public.transactions(category_id);
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists set_transactions_updated_at on public.transactions;
+create trigger set_transactions_updated_at
+before update on public.transactions
+for each row
+execute function public.set_updated_at();
+
+alter table public.profiles enable row level security;
+alter table public.categories enable row level security;
+alter table public.transactions enable row level security;
+
+drop policy if exists "Users can read their profile" on public.profiles;
+create policy "Users can read their profile"
+  on public.profiles for select
+  using (auth.uid() = id);
+
+drop policy if exists "Users can create their profile" on public.profiles;
+create policy "Users can create their profile"
+  on public.profiles for insert
+  with check (auth.uid() = id);
+
+drop policy if exists "Users can update their profile" on public.profiles;
+create policy "Users can update their profile"
+  on public.profiles for update
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
+
+drop policy if exists "Users can delete their profile" on public.profiles;
+create policy "Users can delete their profile"
+  on public.profiles for delete
+  using (auth.uid() = id);
+
+drop policy if exists "Users can read their categories" on public.categories;
+create policy "Users can read their categories"
+  on public.categories for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can create their categories" on public.categories;
+create policy "Users can create their categories"
+  on public.categories for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update their categories" on public.categories;
+create policy "Users can update their categories"
+  on public.categories for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete their categories" on public.categories;
+create policy "Users can delete their categories"
+  on public.categories for delete
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can read their transactions" on public.transactions;
+create policy "Users can read their transactions"
+  on public.transactions for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can create their transactions" on public.transactions;
+create policy "Users can create their transactions"
+  on public.transactions for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update their transactions" on public.transactions;
+create policy "Users can update their transactions"
+  on public.transactions for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete their transactions" on public.transactions;
+create policy "Users can delete their transactions"
+  on public.transactions for delete
+  using (auth.uid() = user_id);
+
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = 'transactions'
+    ) then
+      alter publication supabase_realtime add table public.transactions;
+    end if;
+
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = 'categories'
+    ) then
+      alter publication supabase_realtime add table public.categories;
+    end if;
+  end if;
+end;
+$$;
