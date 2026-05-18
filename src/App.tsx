@@ -25,8 +25,11 @@ function App() {
               }
             >
               <Route index element={<DashboardPage />} />
+              <Route path="dashboard" element={<DashboardPage />} />
               <Route path="movimientos" element={<MovementsPage />} />
+              <Route path="transactions" element={<MovementsPage />} />
               <Route path="categorias" element={<CategoriesPage />} />
+              <Route path="categories" element={<CategoriesPage />} />
               <Route path="configuracion" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
