@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { BarChart3, FileBarChart, FolderTree, Landmark, LogOut, Moon, PiggyBank, Settings, Sun, WalletCards } from 'lucide-react'
+import { BarChart3, FileBarChart, FolderTree, Landmark, LogOut, MailSearch, Moon, PiggyBank, Settings, Sun, WalletCards } from 'lucide-react'
 import { useEffect } from 'react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
@@ -11,6 +11,7 @@ import { useTheme } from '../theme/ThemeProvider'
 const navItems = [
   { to: '/', label: 'Dashboard', mobileLabel: 'Inicio', icon: BarChart3, end: true },
   { to: '/movimientos', label: 'Movimientos', mobileLabel: 'Movs.', icon: WalletCards, end: false },
+  { to: '/importar-correos-bancarios', label: 'Importar correos', mobileLabel: 'Importar', icon: MailSearch, end: false },
   { to: '/categorias', label: 'Categorias', mobileLabel: 'Categ.', icon: FolderTree, end: false },
   { to: '/cuentas', label: 'Cuentas', mobileLabel: 'Cuentas', icon: Landmark, end: false },
   { to: '/presupuestos', label: 'Presupuestos', mobileLabel: 'Presup.', icon: PiggyBank, end: false },
@@ -106,13 +107,13 @@ export function AppShell() {
           </div>
         </header>
 
-        <main key={currency} className="mx-auto w-full max-w-7xl px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-8">
+        <main key={currency} className="mx-auto w-full max-w-7xl px-4 pb-36 pt-5 sm:px-6 lg:px-8 lg:pb-8">
           <Outlet />
         </main>
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:hidden">
-        <div className="mx-auto grid max-w-2xl grid-cols-7 gap-1">
+        <div className="mx-auto grid max-w-2xl grid-cols-4 gap-1 sm:grid-cols-8">
           {navItems.map((item) => (
             <NavLink
               key={item.to}

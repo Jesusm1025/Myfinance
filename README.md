@@ -21,6 +21,7 @@ Aplicacion web responsive tipo PWA para contabilidad personal. Permite registrar
 - Rutas protegidas por usuario.
 - Dashboard financiero con ingresos, gastos, balance, mayor gasto, graficos y ultimos movimientos.
 - CRUD de movimientos, categorias, cuentas y transferencias entre cuentas.
+- Importacion manual de movimientos desde texto de notificaciones bancarias.
 - Pantalla de presupuestos mensual general y por categoria, con alertas al 80% y al superar el presupuesto.
 - Configuracion de moneda con RD$ por defecto y opciones RD$, US$, €, Bs.
 - Reportes por mes o rango de fechas.
@@ -162,7 +163,7 @@ VITE_SUPABASE_ANON_KEY
 6. Haz deploy.
 7. Si agregas variables despues del primer deploy, ejecuta **Redeploy**.
 
-El archivo `vercel.json` redirige rutas internas a `index.html`, por lo que recargar `/dashboard`, `/movimientos`, `/cuentas`, `/presupuestos`, `/budgets`, `/reportes` o `/categorias` no debe producir 404.
+El archivo `vercel.json` redirige rutas internas a `index.html`, por lo que recargar `/dashboard`, `/movimientos`, `/importar-correos-bancarios`, `/import-bank-emails`, `/cuentas`, `/presupuestos`, `/budgets`, `/reportes` o `/categorias` no debe producir 404.
 
 ## Configurar Supabase Auth en produccion
 
@@ -212,7 +213,7 @@ src/
   components/    Componentes compartidos
   currency/      Preferencias de moneda
   hooks/         Realtime Sync
-  lib/           Cliente Supabase
+  lib/           Cliente Supabase y parser de correos bancarios
   pages/         Pantallas principales
   services/      Acceso a datos Supabase
   theme/         Modo claro/oscuro

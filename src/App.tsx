@@ -7,6 +7,7 @@ import { AccountsPage } from './pages/AccountsPage'
 import { BudgetsPage } from './pages/BudgetsPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { ImportBankEmailsPage } from './pages/ImportBankEmailsPage'
 import { MovementsPage } from './pages/MovementsPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -33,6 +34,8 @@ function App() {
                 <Route path="dashboard" element={<DashboardPage />} />
                 <Route path="movimientos" element={<MovementsPage />} />
                 <Route path="transactions" element={<MovementsPage />} />
+                <Route path="importar-correos-bancarios" element={<ImportBankEmailsPage />} />
+                <Route path="import-bank-emails" element={<ImportBankEmailsPage />} />
                 <Route path="categorias" element={<CategoriesPage />} />
                 <Route path="categories" element={<CategoriesPage />} />
                 <Route path="cuentas" element={<AccountsPage />} />
