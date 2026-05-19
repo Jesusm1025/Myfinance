@@ -8,6 +8,30 @@ exception
 end;
 $$;
 
+do $$
+begin
+  create type public.debt_type as enum ('loan', 'credit_card', 'family', 'store', 'other');
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+do $$
+begin
+  create type public.debt_payment_frequency as enum ('once', 'weekly', 'biweekly', 'monthly');
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+do $$
+begin
+  create type public.debt_status as enum ('active', 'paid', 'overdue');
+exception
+  when duplicate_object then null;
+end;
+$$;
+
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
@@ -143,6 +167,26 @@ create table if not exists public.monthly_budgets (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.debts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  type public.debt_type not null default 'loan',
+  creditor text not null,
+  initial_amount numeric(14, 2) not null check (initial_amount > 0),
+  outstanding_balance numeric(14, 2) not null check (outstanding_balance >= 0),
+  start_date date not null default current_date,
+  due_date date,
+  interest_rate numeric(7, 4) check (interest_rate is null or interest_rate >= 0),
+  minimum_payment numeric(14, 2) check (minimum_payment is null or minimum_payment >= 0),
+  payment_frequency public.debt_payment_frequency not null default 'monthly',
+  status public.debt_status not null default 'active',
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint debts_due_date_after_start_date check (due_date is null or due_date >= start_date)
+);
+
 create unique index if not exists monthly_budgets_general_unique
   on public.monthly_budgets(user_id, month)
   where category_id is null;
@@ -163,6 +207,9 @@ create index if not exists account_transfers_user_date_idx on public.account_tra
 create index if not exists account_transfers_from_account_id_idx on public.account_transfers(from_account_id);
 create index if not exists account_transfers_to_account_id_idx on public.account_transfers(to_account_id);
 create index if not exists monthly_budgets_user_month_idx on public.monthly_budgets(user_id, month);
+create index if not exists debts_user_id_idx on public.debts(user_id);
+create index if not exists debts_user_status_idx on public.debts(user_id, status);
+create index if not exists debts_user_due_date_idx on public.debts(user_id, due_date);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -204,6 +251,12 @@ before update on public.monthly_budgets
 for each row
 execute function public.set_updated_at();
 
+drop trigger if exists set_debts_updated_at on public.debts;
+create trigger set_debts_updated_at
+before update on public.debts
+for each row
+execute function public.set_updated_at();
+
 alter table public.profiles enable row level security;
 alter table public.user_preferences enable row level security;
 alter table public.categories enable row level security;
@@ -211,9 +264,13 @@ alter table public.accounts enable row level security;
 alter table public.transactions enable row level security;
 alter table public.account_transfers enable row level security;
 alter table public.monthly_budgets enable row level security;
+alter table public.debts enable row level security;
 
 grant usage on schema public to anon, authenticated;
 grant usage on type public.transaction_type to authenticated;
+grant usage on type public.debt_type to authenticated;
+grant usage on type public.debt_payment_frequency to authenticated;
+grant usage on type public.debt_status to authenticated;
 grant select, insert, update, delete on public.profiles to authenticated;
 grant select, insert, update, delete on public.user_preferences to authenticated;
 grant select, insert, update, delete on public.categories to authenticated;
@@ -221,6 +278,7 @@ grant select, insert, update, delete on public.accounts to authenticated;
 grant select, insert, update, delete on public.transactions to authenticated;
 grant select, insert, update, delete on public.account_transfers to authenticated;
 grant select, insert, update, delete on public.monthly_budgets to authenticated;
+grant select, insert, update, delete on public.debts to authenticated;
 
 drop policy if exists "Users can read their profile" on public.profiles;
 create policy "Users can read their profile"
@@ -449,6 +507,27 @@ create policy "Users can delete their budgets"
   on public.monthly_budgets for delete
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can read their debts" on public.debts;
+create policy "Users can read their debts"
+  on public.debts for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can create their debts" on public.debts;
+create policy "Users can create their debts"
+  on public.debts for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update their debts" on public.debts;
+create policy "Users can update their debts"
+  on public.debts for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete their debts" on public.debts;
+create policy "Users can delete their debts"
+  on public.debts for delete
+  using (auth.uid() = user_id);
+
 do $$
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
@@ -500,6 +579,16 @@ begin
         and tablename = 'monthly_budgets'
     ) then
       alter publication supabase_realtime add table public.monthly_budgets;
+    end if;
+
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = 'debts'
+    ) then
+      alter publication supabase_realtime add table public.debts;
     end if;
   end if;
 end;

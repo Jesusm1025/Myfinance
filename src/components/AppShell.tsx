@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { BarChart3, FileBarChart, FolderTree, Landmark, LogOut, MailSearch, Moon, PiggyBank, Settings, Sun, WalletCards } from 'lucide-react'
+import { BarChart3, CircleDollarSign, FileBarChart, FolderTree, Landmark, LogOut, MailSearch, Moon, PiggyBank, Settings, Sun, WalletCards } from 'lucide-react'
 import { useEffect } from 'react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
@@ -14,6 +14,7 @@ const navItems = [
   { to: '/importar-correos-bancarios', label: 'Importar correos', mobileLabel: 'Importar', icon: MailSearch, end: false },
   { to: '/categorias', label: 'Categorias', mobileLabel: 'Categ.', icon: FolderTree, end: false },
   { to: '/cuentas', label: 'Cuentas', mobileLabel: 'Cuentas', icon: Landmark, end: false },
+  { to: '/deudas', label: 'Deudas', mobileLabel: 'Deudas', icon: CircleDollarSign, end: false },
   { to: '/presupuestos', label: 'Presupuestos', mobileLabel: 'Presup.', icon: PiggyBank, end: false },
   { to: '/reportes', label: 'Reportes', mobileLabel: 'Reportes', icon: FileBarChart, end: false },
   { to: '/configuracion', label: 'Configuracion', mobileLabel: 'Ajustes', icon: Settings, end: false },
@@ -113,7 +114,7 @@ export function AppShell() {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:hidden">
-        <div className="mx-auto grid max-w-2xl grid-cols-4 gap-1 sm:grid-cols-8">
+        <div className="mx-auto grid max-w-2xl grid-cols-5 gap-1 sm:grid-cols-9">
           {navItems.map((item) => (
             <NavLink
               key={item.to}

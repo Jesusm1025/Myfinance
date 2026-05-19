@@ -1,6 +1,9 @@
 export type MovementType = 'income' | 'expense'
 export type PaymentMethod = 'cash' | 'card' | 'transfer' | 'other'
 export type AccountType = 'cash' | 'bank' | 'debit_card' | 'credit_card' | 'savings' | 'other'
+export type DebtType = 'loan' | 'credit_card' | 'family' | 'store' | 'other'
+export type DebtPaymentFrequency = 'once' | 'weekly' | 'biweekly' | 'monthly'
+export type DebtStatus = 'active' | 'paid' | 'overdue'
 
 export type Account = {
   id: string
@@ -120,4 +123,39 @@ export type MovementFilters = {
   paymentMethod: 'all' | PaymentMethod
   from: string
   to: string
+}
+
+export type Debt = {
+  id: string
+  user_id: string
+  name: string
+  type: DebtType
+  creditor: string
+  initial_amount: number
+  outstanding_balance: number
+  start_date: string
+  due_date: string | null
+  interest_rate: number | null
+  minimum_payment: number | null
+  payment_frequency: DebtPaymentFrequency
+  status: DebtStatus
+  notes: string | null
+  created_at: string
+  updated_at?: string
+}
+
+export type DebtFormValues = {
+  id?: string
+  name: string
+  type: DebtType
+  creditor: string
+  initial_amount: string
+  outstanding_balance: string
+  start_date: string
+  due_date: string
+  interest_rate: string
+  minimum_payment: string
+  payment_frequency: DebtPaymentFrequency
+  status: DebtStatus
+  notes: string
 }

@@ -6,6 +6,8 @@ import type {
   Category,
   CategoryFormValues,
   BudgetFormValues,
+  Debt,
+  DebtFormValues,
   Movement,
   MovementFilters,
   MovementFormValues,
@@ -17,6 +19,7 @@ import {
   notifyAccountsChanged,
   notifyBudgetsChanged,
   notifyCategoriesChanged,
+  notifyDebtsChanged,
   notifyMovementsChanged,
 } from '../events/financeEvents'
 import type { CurrencyCode } from '../utils/currency'
@@ -478,4 +481,78 @@ export async function deleteMonthlyBudget(userId: string, id: string) {
   const { error } = await client.from('monthly_budgets').delete().eq('id', id).eq('user_id', userId)
   if (error) throw error
   notifyBudgetsChanged()
+}
+
+export async function listDebts(userId: string) {
+  const client = requireSupabase()
+  const { data, error } = await client
+    .from('debts')
+    .select('*')
+    .eq('user_id', userId)
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data as Debt[]
+}
+
+export async function saveDebt(userId: string, values: DebtFormValues) {
+  const client = requireSupabase()
+  const initialAmount = Number(values.initial_amount)
+  const outstandingBalance = Number(values.outstanding_balance)
+  const interestRate = values.interest_rate.trim() ? Number(values.interest_rate) : null
+  const minimumPayment = values.minimum_payment.trim() ? Number(values.minimum_payment) : null
+
+  if (!values.name.trim()) {
+    throw new Error('El nombre de la deuda es obligatorio.')
+  }
+  if (!values.creditor.trim()) {
+    throw new Error('La persona o entidad acreedora es obligatoria.')
+  }
+  if (!Number.isFinite(initialAmount) || initialAmount <= 0) {
+    throw new Error('El monto inicial debe ser mayor que 0.')
+  }
+  if (!Number.isFinite(outstandingBalance) || outstandingBalance < 0) {
+    throw new Error('El saldo pendiente debe ser un numero valido.')
+  }
+  if (interestRate !== null && (!Number.isFinite(interestRate) || interestRate < 0)) {
+    throw new Error('La tasa de interes debe ser un numero valido.')
+  }
+  if (minimumPayment !== null && (!Number.isFinite(minimumPayment) || minimumPayment < 0)) {
+    throw new Error('El pago minimo debe ser un numero valido.')
+  }
+  if (!values.start_date) {
+    throw new Error('La fecha de inicio es obligatoria.')
+  }
+
+  const payload = {
+    user_id: userId,
+    name: values.name.trim(),
+    type: values.type,
+    creditor: values.creditor.trim(),
+    initial_amount: initialAmount,
+    outstanding_balance: outstandingBalance,
+    start_date: values.start_date,
+    due_date: values.due_date || null,
+    interest_rate: interestRate,
+    minimum_payment: minimumPayment,
+    payment_frequency: values.payment_frequency,
+    status: values.status,
+    notes: values.notes.trim() || null,
+  }
+
+  const query = values.id
+    ? client.from('debts').update(payload).eq('id', values.id).eq('user_id', userId)
+    : client.from('debts').insert(payload)
+
+  const { error } = await query
+  if (error) throw error
+  notifyDebtsChanged()
+}
+
+export async function deleteDebt(userId: string, id: string) {
+  const client = requireSupabase()
+  const { error } = await client.from('debts').delete().eq('id', id).eq('user_id', userId)
+  if (error) throw error
+  notifyDebtsChanged()
 }
