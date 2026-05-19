@@ -399,6 +399,12 @@ export function ImportBankEmailsPage() {
                 <PreviewItem label="Tipo detectado" value={bankMovementKindLabel(parsed.movementKind)} />
                 <PreviewItem label="Moneda detectada" value={parsed.currency ?? 'No detectada'} />
                 <PreviewItem label="Categoria sugerida" value={parsed.suggestedCategory} />
+                <PreviewItem label="Fecha" value={parsed.date || 'No detectada'} />
+                <PreviewItem label="Hora" value={parsed.time || 'No detectada'} />
+                <PreviewItem label="Comercio/beneficiario" value={parsed.merchant || parsed.beneficiary || 'No detectado'} />
+                <PreviewItem label="Ultimos 4 digitos" value={parsed.last4 || 'No detectado'} />
+                <PreviewItem label="Canal" value={parsed.channel || 'No detectado'} />
+                <PreviewItem label="Descripcion limpia" value={parsed.description || 'No detectada'} />
               </div>
 
               {parsed.warnings.length ? (
