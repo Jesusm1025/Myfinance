@@ -563,88 +563,7 @@ $register_debt_payment$;
 
 grant execute on function public.register_debt_payment(uuid, numeric, date, text, text, boolean, uuid, uuid) to authenticated;
 
-create or replace function public.create_education_debt_seed()
-returns public.debts
-language plpgsql
-security definer
-set search_path = public
-as $create_education_debt_seed$
-declare
-  v_debt public.debts%rowtype;
-begin
-  if auth.uid() is null then
-    raise exception 'Debes iniciar sesion para crear el plan de cuotas.';
-  end if;
-
-  select *
-    into v_debt
-    from public.debts
-   where user_id = auth.uid()
-     and name = 'Deuda educacion / matricula'
-     and creditor = 'Universidad'
-   order by created_at desc
-   limit 1;
-
-  if not found then
-    insert into public.debts (
-      user_id,
-      name,
-      type,
-      creditor,
-      currency,
-      initial_amount,
-      outstanding_balance,
-      start_date,
-      due_date,
-      payment_frequency,
-      status,
-      notes
-    )
-    values (
-      auth.uid(),
-      'Deuda educacion / matricula',
-      'education',
-      'Universidad',
-      'DOP',
-      173565.67,
-      173565.67,
-      current_date,
-      '2026-07-15',
-      'monthly',
-      'active',
-      'Deuda de matricula con varias cuotas pendientes y un recargo por incumplimiento.'
-    )
-    returning * into v_debt;
-  end if;
-
-  insert into public.debt_installments (debt_id, user_id, description, amount, due_date, status)
-  select v_debt.id, auth.uid(), seed.description, seed.amount, seed.due_date,
-         case when seed.due_date is not null and seed.due_date < current_date then 'overdue' else 'pending' end
-  from (
-    values
-      ('Recargo por incumplimiento cuota no. 1 del acuerdo de pago, correspondiente al semestre 2026-3', 1966.67::numeric, null::date),
-      ('Pago matricula - cuota pendiente', 30866.34::numeric, '2025-02-15'::date),
-      ('Pago matricula - cuota pendiente', 30866.33::numeric, '2025-03-15'::date),
-      ('Pago matricula - cuota pendiente', 30866.33::numeric, '2025-01-15'::date),
-      ('Pago matricula - cuota pendiente', 24750.00::numeric, '2025-10-15'::date),
-      ('Pago matricula - cuota pendiente', 24750.00::numeric, '2025-11-15'::date),
-      ('Pago matricula - cuota pendiente', 9833.33::numeric, '2026-05-15'::date),
-      ('Pago matricula - cuota pendiente', 9833.33::numeric, '2026-06-15'::date),
-      ('Pago matricula - cuota pendiente', 9833.34::numeric, '2026-07-15'::date)
-  ) as seed(description, amount, due_date)
-  where not exists (
-    select 1
-    from public.debt_installments existing
-    where existing.user_id = auth.uid()
-      and existing.debt_id = v_debt.id
-      and existing.description = seed.description
-      and existing.amount = seed.amount
-      and existing.due_date is not distinct from seed.due_date
-  );
-
-  return v_debt;
-end;
-$create_education_debt_seed$;
+drop function if exists public.create_education_debt_seed();
 
 create or replace function public.pay_debt_installment(
   p_installment_id uuid,
@@ -746,7 +665,6 @@ begin
 end;
 $pay_debt_installment$;
 
-grant execute on function public.create_education_debt_seed() to authenticated;
 grant execute on function public.pay_debt_installment(uuid, date, text, text) to authenticated;
 
 do $debt_realtime$

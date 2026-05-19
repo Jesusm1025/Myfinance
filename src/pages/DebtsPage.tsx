@@ -6,7 +6,7 @@ import { EmptyState } from '../components/EmptyState'
 import { StatCard } from '../components/StatCard'
 import { StatusMessage } from '../components/StatusMessage'
 import { debtsChangedEvent } from '../events/financeEvents'
-import { createEducationDebtSeed, deleteDebt, listAccounts, listDebtInstallments, listDebtPayments, listDebts, listDebtSubaccounts, payDebtInstallment, registerDebtPayment, saveDebt } from '../services/accounting'
+import { deleteDebt, listAccounts, listDebtInstallments, listDebtPayments, listDebts, listDebtSubaccounts, payDebtInstallment, registerDebtPayment, saveDebt } from '../services/accounting'
 import type { Account, Debt, DebtFormValues, DebtInstallment, DebtPayment, DebtPaymentFormValues, DebtStatus, DebtSubaccount, DebtSubaccountFormValues } from '../types/finance'
 import {
   creditCardDebtStatusLabel,
@@ -93,7 +93,6 @@ export function DebtsPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submittingPaymentId, setSubmittingPaymentId] = useState('')
-  const [submittingEducationSeed, setSubmittingEducationSeed] = useState(false)
   const [payingInstallmentId, setPayingInstallmentId] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -351,23 +350,6 @@ export function DebtsPage() {
     }
   }
 
-  async function handleCreateEducationPlan() {
-    if (!user) return
-    setSubmittingEducationSeed(true)
-    setError('')
-    setSuccess('')
-
-    try {
-      await createEducationDebtSeed(user.id)
-      setSuccess('Deuda de educacion y cuotas creadas correctamente.')
-      await loadDebts()
-    } catch (seedError) {
-      setError(seedError instanceof Error ? seedError.message : 'No se pudo crear el plan de educacion.')
-    } finally {
-      setSubmittingEducationSeed(false)
-    }
-  }
-
   async function handlePayInstallment(installment: DebtInstallment) {
     if (!user || installment.status === 'paid') return
     if (!window.confirm(`Marcar como pagada la cuota de ${formatMoney(Number(installment.amount))}?`)) return
@@ -452,15 +434,6 @@ export function DebtsPage() {
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={() => void handleCreateEducationPlan()}
-            disabled={submittingEducationSeed}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-brand-500/30 px-4 py-3 text-sm font-semibold text-brand-700 shadow-sm hover:bg-brand-50 disabled:opacity-60 dark:border-brand-400/30 dark:text-brand-100 dark:hover:bg-brand-500/10"
-          >
-            {submittingEducationSeed ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <GraduationCap className="h-5 w-5" />}
-            Crear plan educacion
-          </button>
           <button
             type="button"
             onClick={startCreate}

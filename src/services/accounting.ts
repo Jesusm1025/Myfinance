@@ -775,22 +775,6 @@ export async function saveDebt(userId: string, values: DebtFormValues) {
   notifyDebtsChanged()
 }
 
-export async function createEducationDebtSeed(userId: string) {
-  if (!userId) {
-    throw new Error('Debes iniciar sesion para crear el plan de cuotas.')
-  }
-
-  const client = requireSupabase()
-  const { error } = await client.rpc('create_education_debt_seed')
-  if (error) {
-    if (isDebtAdvancedSchemaError(error)) {
-      throw new Error('Falta ejecutar el SQL actualizado de cuotas de deudas en Supabase.')
-    }
-    throw error
-  }
-  notifyDebtsChanged()
-}
-
 export async function payDebtInstallment(userId: string, installmentId: string) {
   if (!userId) {
     throw new Error('Debes iniciar sesion para pagar cuotas.')
