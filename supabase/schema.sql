@@ -104,6 +104,12 @@ alter table public.profiles enable row level security;
 alter table public.categories enable row level security;
 alter table public.transactions enable row level security;
 
+grant usage on schema public to anon, authenticated;
+grant usage on type public.transaction_type to authenticated;
+grant select, insert, update, delete on public.profiles to authenticated;
+grant select, insert, update, delete on public.categories to authenticated;
+grant select, insert, update, delete on public.transactions to authenticated;
+
 drop policy if exists "Users can read their profile" on public.profiles;
 create policy "Users can read their profile"
   on public.profiles for select
