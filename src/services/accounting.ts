@@ -509,11 +509,14 @@ export async function saveDebt(userId: string, values: DebtFormValues) {
   if (!values.creditor.trim()) {
     throw new Error('La persona o entidad acreedora es obligatoria.')
   }
-  if (!Number.isFinite(initialAmount) || initialAmount <= 0) {
-    throw new Error('El monto inicial debe ser mayor que 0.')
+  if (!Number.isFinite(initialAmount) || initialAmount < 0) {
+    throw new Error('El monto inicial debe ser mayor o igual a 0.')
   }
   if (!Number.isFinite(outstandingBalance) || outstandingBalance < 0) {
     throw new Error('El saldo pendiente debe ser un numero valido.')
+  }
+  if (outstandingBalance > initialAmount) {
+    throw new Error('El saldo pendiente no puede ser mayor que el monto inicial.')
   }
   if (interestRate !== null && (!Number.isFinite(interestRate) || interestRate < 0)) {
     throw new Error('La tasa de interes debe ser un numero valido.')

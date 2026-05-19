@@ -40,7 +40,7 @@ create table if not exists public.debts (
   name text not null,
   type public.debt_type not null default 'loan',
   creditor text not null,
-  initial_amount numeric(14, 2) not null check (initial_amount > 0),
+  initial_amount numeric(14, 2) not null check (initial_amount >= 0),
   outstanding_balance numeric(14, 2) not null check (outstanding_balance >= 0),
   start_date date not null default current_date,
   due_date date,
@@ -51,8 +51,17 @@ create table if not exists public.debts (
   notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint debts_due_date_after_start_date check (due_date is null or due_date >= start_date)
+  constraint debts_due_date_after_start_date check (due_date is null or due_date >= start_date),
+  constraint debts_outstanding_not_above_initial check (outstanding_balance <= initial_amount)
 );
+
+alter table public.debts drop constraint if exists debts_initial_amount_check;
+alter table public.debts drop constraint if exists debts_outstanding_balance_check;
+alter table public.debts drop constraint if exists debts_outstanding_not_above_initial;
+alter table public.debts
+  add constraint debts_initial_amount_check check (initial_amount >= 0),
+  add constraint debts_outstanding_balance_check check (outstanding_balance >= 0),
+  add constraint debts_outstanding_not_above_initial check (outstanding_balance <= initial_amount);
 
 create index if not exists debts_user_id_idx on public.debts(user_id);
 create index if not exists debts_user_status_idx on public.debts(user_id, status);
