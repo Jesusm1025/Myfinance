@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BanknoteArrowDown, ClipboardPaste, LoaderCircle, MailSearch, Save, Sparkles } from 'lucide-react'
+import { BanknoteArrowDown, CheckCircle2, ClipboardPaste, LoaderCircle, MailSearch, Save, Sparkles } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
 import { EmptyState } from '../components/EmptyState'
@@ -7,6 +7,13 @@ import { StatusMessage } from '../components/StatusMessage'
 import { accountsChangedEvent, categoriesChangedEvent } from '../events/financeEvents'
 import { bankMovementKindLabel, parseBankEmail } from '../lib/bankEmailParser'
 import type { ParsedBankEmail } from '../lib/bankEmailParser'
+import {
+  authorizedBanks,
+  fetchAuthorizedBankEmails,
+  gmailConfigured,
+  requestGmailAccessToken,
+} from '../lib/gmailBankEmailClient'
+import type { AuthorizedBankId, GmailBankEmail } from '../lib/gmailBankEmailClient'
 import { listAccounts, listCategories, saveMovement } from '../services/accounting'
 import type { Account, Category, MovementFormValues, MovementType, PaymentMethod } from '../types/finance'
 import { formatMoney, movementTypeLabel, paymentMethodLabel } from '../utils/format'
@@ -17,6 +24,7 @@ const fieldClass =
 const labelClass = 'text-sm font-medium text-slate-700 dark:text-slate-300'
 
 const initialEmailText = ''
+const bankSelectionStorageKey = 'finance:gmail-authorized-banks'
 
 const movementKindPaymentMap: Record<ParsedBankEmail['movementKind'], PaymentMethod> = {
   expense: 'card',
@@ -62,6 +70,20 @@ function parsedToMovement(parsed: ParsedBankEmail, categories: Category[], accou
   }
 }
 
+function readInitialAuthorizedBanks() {
+  const stored = window.localStorage.getItem(bankSelectionStorageKey)
+  if (!stored) return authorizedBanks.map((bank) => bank.id)
+
+  try {
+    const parsed = JSON.parse(stored) as AuthorizedBankId[]
+    const allowedIds = new Set(authorizedBanks.map((bank) => bank.id))
+    const validIds = parsed.filter((bankId) => allowedIds.has(bankId))
+    return validIds.length ? validIds : authorizedBanks.map((bank) => bank.id)
+  } catch {
+    return authorizedBanks.map((bank) => bank.id)
+  }
+}
+
 export function ImportBankEmailsPage() {
   const { user } = useAuth()
   const [emailText, setEmailText] = useState(initialEmailText)
@@ -71,6 +93,11 @@ export function ImportBankEmailsPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loadingCatalogs, setLoadingCatalogs] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [gmailConnecting, setGmailConnecting] = useState(false)
+  const [gmailLoading, setGmailLoading] = useState(false)
+  const [gmailConnected, setGmailConnected] = useState(false)
+  const [authorizedBankIds, setAuthorizedBankIds] = useState<AuthorizedBankId[]>(readInitialAuthorizedBanks)
+  const [gmailEmails, setGmailEmails] = useState<GmailBankEmail[]>([])
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -110,12 +137,69 @@ export function ImportBankEmailsPage() {
     [categories, values?.type],
   )
 
+  useEffect(() => {
+    window.localStorage.setItem(bankSelectionStorageKey, JSON.stringify(authorizedBankIds))
+  }, [authorizedBankIds])
+
   function analyzeEmail() {
     setError('')
     setSuccess('')
     const nextParsed = parseBankEmail(emailText)
     setParsed(nextParsed)
     setValues(parsedToMovement(nextParsed, categories, accounts))
+  }
+
+  function toggleAuthorizedBank(bankId: AuthorizedBankId) {
+    setAuthorizedBankIds((current) =>
+      current.includes(bankId)
+        ? current.filter((currentBankId) => currentBankId !== bankId)
+        : [...current, bankId],
+    )
+  }
+
+  async function connectGmail() {
+    setError('')
+    setSuccess('')
+    setGmailConnecting(true)
+    try {
+      await requestGmailAccessToken()
+      setGmailConnected(true)
+      setSuccess('Gmail conectado con permiso de solo lectura.')
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : 'No se pudo conectar Gmail.')
+    } finally {
+      setGmailConnecting(false)
+    }
+  }
+
+  async function loadGmailEmails() {
+    setError('')
+    setSuccess('')
+
+    if (!authorizedBankIds.length) {
+      setError('Selecciona al menos un banco autorizado antes de leer Gmail.')
+      return
+    }
+
+    setGmailLoading(true)
+    try {
+      const emails = await fetchAuthorizedBankEmails({ selectedBankIds: authorizedBankIds, maxResults: 10 })
+      setGmailConnected(true)
+      setGmailEmails(emails)
+      setSuccess(emails.length ? `${emails.length} correo(s) bancario(s) encontrados.` : 'No se encontraron correos de los bancos autorizados.')
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'No se pudieron leer correos de Gmail.')
+    } finally {
+      setGmailLoading(false)
+    }
+  }
+
+  function handleUseGmailEmail(email: GmailBankEmail) {
+    const nextText = `${email.subject}\n${email.from}\n${email.date}\n${email.snippet}\n${email.body}`.trim()
+    setEmailText(nextText)
+    setParsed(email.parsed)
+    setValues(parsedToMovement(email.parsed, categories, accounts))
+    setSuccess('Correo cargado en la vista previa. Revisa los datos antes de guardar.')
   }
 
   async function saveDetectedMovement() {
@@ -182,13 +266,107 @@ export function ImportBankEmailsPage() {
           <div className="flex items-start gap-2">
             <ClipboardPaste className="mt-0.5 h-4 w-4 text-brand-700 dark:text-brand-100" />
             <p>
-              En una siguiente fase, Gmail OAuth puede leer el body del correo y enviarlo directamente a este mismo parser.
+              Tambien puedes conectar Gmail con permiso de solo lectura. Solo se consultan bancos que marques como autorizados.
             </p>
           </div>
         </div>
       </section>
 
       <section className="space-y-4">
+        <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold">Leer correos desde Gmail</h3>
+              <p className="mt-1 text-sm text-muted dark:text-slate-400">
+                Autoriza bancos especificos y consulta Gmail usando solo el scope `gmail.readonly`.
+              </p>
+            </div>
+            <span
+              className={clsx(
+                'inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold',
+                gmailConnected
+                  ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100'
+                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+              )}
+            >
+              {gmailConnected ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
+              {gmailConnected ? 'Conectado' : 'No conectado'}
+            </span>
+          </div>
+
+          {!gmailConfigured() ? (
+            <div className="mt-4">
+              <StatusMessage message="Configura VITE_GOOGLE_CLIENT_ID para activar Google OAuth en esta pantalla." />
+            </div>
+          ) : null}
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {authorizedBanks.map((bank) => (
+              <label
+                key={bank.id}
+                className={clsx(
+                  'flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium transition',
+                  authorizedBankIds.includes(bank.id)
+                    ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-100'
+                    : 'border-line bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={authorizedBankIds.includes(bank.id)}
+                  onChange={() => toggleAuthorizedBank(bank.id)}
+                  className="h-4 w-4 accent-brand-600"
+                />
+                {bank.name}
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              disabled={!gmailConfigured() || gmailConnecting}
+              onClick={() => void connectGmail()}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 py-3 font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 sm:flex-none"
+            >
+              {gmailConnecting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <MailSearch className="h-5 w-5" />}
+              Conectar Gmail
+            </button>
+            <button
+              type="button"
+              disabled={!gmailConfigured() || gmailLoading || !authorizedBankIds.length}
+              onClick={() => void loadGmailEmails()}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+            >
+              {gmailLoading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
+              Buscar correos
+            </button>
+          </div>
+
+          {gmailEmails.length ? (
+            <div className="mt-5 divide-y divide-line overflow-hidden rounded-lg border border-line dark:divide-slate-800 dark:border-slate-800">
+              {gmailEmails.map((email) => (
+                <article key={email.id} className="p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{email.subject}</p>
+                      <p className="mt-1 truncate text-sm text-muted dark:text-slate-400">{email.from}</p>
+                      <p className="mt-2 line-clamp-2 text-sm text-slate-600 dark:text-slate-300">{email.snippet}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleUseGmailEmail(email)}
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:border-slate-700 dark:text-brand-100 dark:hover:bg-brand-500/10"
+                    >
+                      Usar correo
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </article>
+
         {parsed && values ? (
           <>
             <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">

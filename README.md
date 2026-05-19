@@ -22,6 +22,7 @@ Aplicacion web responsive tipo PWA para contabilidad personal. Permite registrar
 - Dashboard financiero con ingresos, gastos, balance, mayor gasto, graficos y ultimos movimientos.
 - CRUD de movimientos, categorias, cuentas y transferencias entre cuentas.
 - Importacion manual de movimientos desde texto de notificaciones bancarias.
+- Conexion opcional con Gmail mediante Google OAuth para leer correos bancarios autorizados por el usuario.
 - Pantalla de presupuestos mensual general y por categoria, con alertas al 80% y al superar el presupuesto.
 - Configuracion de moneda con RD$ por defecto y opciones RD$, US$, €, Bs.
 - Reportes por mes o rango de fechas.
@@ -55,9 +56,10 @@ Completa `.env.local`:
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 ```
 
-No uses `service_role_key` en esta app. El frontend debe usar solo la anon key.
+No uses `service_role_key` en esta app. El frontend debe usar solo la anon key. El `VITE_GOOGLE_CLIENT_ID` es publico; no agregues client secret al frontend.
 
 ## Configurar Supabase
 
@@ -115,9 +117,43 @@ Variables permitidas en frontend:
 ```env
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
+VITE_GOOGLE_CLIENT_ID
 ```
 
 No subas `.env`, `.env.local` ni claves reales al repositorio.
+
+## Configurar Gmail OAuth
+
+La pantalla `/importar-correos-bancarios` puede funcionar pegando texto manualmente o conectando Gmail con permiso de solo lectura.
+
+Para habilitar Gmail:
+
+1. En Google Cloud Console, crea o selecciona un proyecto.
+2. Habilita **Gmail API**.
+3. Configura la pantalla de consentimiento OAuth.
+4. Crea un OAuth Client ID de tipo **Web application**.
+5. Agrega estos origenes autorizados:
+
+```text
+http://localhost:5173
+https://tu-app.vercel.app
+```
+
+6. Copia el Client ID en `.env.local` y en Vercel:
+
+```env
+VITE_GOOGLE_CLIENT_ID=tu-client-id.apps.googleusercontent.com
+```
+
+7. Haz redeploy en Vercel despues de agregar la variable.
+
+La app solicita solo este scope:
+
+```text
+https://www.googleapis.com/auth/gmail.readonly
+```
+
+El usuario selecciona bancos autorizados antes de buscar correos. La app consulta Gmail con filtros, descarga los mensajes encontrados y envia el cuerpo del correo al mismo parser usado por la importacion manual.
 
 ## Ejecutar localmente
 
@@ -158,6 +194,7 @@ Output Directory: dist
 ```text
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
+VITE_GOOGLE_CLIENT_ID
 ```
 
 6. Haz deploy.
