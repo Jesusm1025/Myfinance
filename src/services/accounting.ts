@@ -8,6 +8,8 @@ import type {
   BudgetFormValues,
   Debt,
   DebtFormValues,
+  DebtPayment,
+  DebtPaymentFormValues,
   Movement,
   MovementFilters,
   MovementFormValues,
@@ -259,6 +261,58 @@ export async function saveCategory(userId: string, values: CategoryFormValues) {
   notifyCategoriesChanged()
 }
 
+async function ensureDebtPaymentCategory(userId: string) {
+  const client = requireSupabase()
+  const { data: existingCategories, error: selectError } = await client
+    .from('categories')
+    .select('id, name')
+    .eq('user_id', userId)
+    .eq('type', 'expense')
+
+  if (selectError) throw selectError
+
+  const categories = existingCategories ?? []
+  const exactCategory = categories.find((category) => category.name.toLowerCase() === 'pago de deuda')
+  if (exactCategory) return exactCategory.id as string
+
+  const equivalentCategory = categories.find((category) => category.name.toLowerCase() === 'deudas')
+  if (equivalentCategory) return equivalentCategory.id as string
+
+  const { data, error } = await client
+    .from('categories')
+    .upsert(
+      {
+        user_id: userId,
+        name: 'Pago de deuda',
+        type: 'expense',
+        color: '#475569',
+        icon: 'credit-card',
+      },
+      { onConflict: 'user_id,name,type' },
+    )
+    .select('id')
+    .single()
+
+  if (error) throw error
+  notifyCategoriesChanged()
+  return data.id as string
+}
+
+async function assertUserAccount(userId: string, accountId: string) {
+  const client = requireSupabase()
+  const { data, error } = await client
+    .from('accounts')
+    .select('id')
+    .eq('id', accountId)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) {
+    throw new Error('Selecciona una cuenta valida para registrar el gasto.')
+  }
+}
+
 export async function countCategoryMovements(userId: string, categoryId: string) {
   const client = requireSupabase()
   const { count, error } = await client
@@ -502,6 +556,9 @@ export async function saveDebt(userId: string, values: DebtFormValues) {
   const outstandingBalance = Number(values.outstanding_balance)
   const interestRate = values.interest_rate.trim() ? Number(values.interest_rate) : null
   const minimumPayment = values.minimum_payment.trim() ? Number(values.minimum_payment) : null
+  const creditLimit = values.credit_limit.trim() ? Number(values.credit_limit) : null
+  const usedBalance = values.used_balance.trim() ? Number(values.used_balance) : null
+  const statementBalance = values.statement_balance.trim() ? Number(values.statement_balance) : null
 
   if (!values.name.trim()) {
     throw new Error('El nombre de la deuda es obligatorio.')
@@ -524,6 +581,20 @@ export async function saveDebt(userId: string, values: DebtFormValues) {
   if (minimumPayment !== null && (!Number.isFinite(minimumPayment) || minimumPayment < 0)) {
     throw new Error('El pago minimo debe ser un numero valido.')
   }
+  if (values.type === 'credit_card') {
+    if (values.card_last4 && !/^[0-9]{4}$/.test(values.card_last4.trim())) {
+      throw new Error('Los ultimos 4 digitos deben tener exactamente 4 numeros.')
+    }
+    if (creditLimit !== null && (!Number.isFinite(creditLimit) || creditLimit < 0)) {
+      throw new Error('El limite de credito debe ser un numero valido.')
+    }
+    if (usedBalance !== null && (!Number.isFinite(usedBalance) || usedBalance < 0)) {
+      throw new Error('El balance usado debe ser un numero valido.')
+    }
+    if (statementBalance !== null && (!Number.isFinite(statementBalance) || statementBalance < 0)) {
+      throw new Error('El pendiente del ultimo corte debe ser un numero valido.')
+    }
+  }
   if (!values.start_date) {
     throw new Error('La fecha de inicio es obligatoria.')
   }
@@ -539,6 +610,12 @@ export async function saveDebt(userId: string, values: DebtFormValues) {
     due_date: values.due_date || null,
     interest_rate: interestRate,
     minimum_payment: minimumPayment,
+    card_last4: values.type === 'credit_card' ? values.card_last4.trim() || null : null,
+    credit_limit: values.type === 'credit_card' ? creditLimit : null,
+    used_balance: values.type === 'credit_card' ? usedBalance : null,
+    statement_balance: values.type === 'credit_card' ? statementBalance : null,
+    statement_date: values.type === 'credit_card' ? values.statement_date || null : null,
+    credit_card_status: values.type === 'credit_card' ? values.credit_card_status || null : null,
     payment_frequency: values.payment_frequency,
     status: values.status,
     notes: values.notes.trim() || null,
@@ -558,4 +635,58 @@ export async function deleteDebt(userId: string, id: string) {
   const { error } = await client.from('debts').delete().eq('id', id).eq('user_id', userId)
   if (error) throw error
   notifyDebtsChanged()
+}
+
+export async function listDebtPayments(userId: string) {
+  const client = requireSupabase()
+  const { data, error } = await client
+    .from('debt_payments')
+    .select('*')
+    .eq('user_id', userId)
+    .order('payment_date', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data as DebtPayment[]
+}
+
+export async function registerDebtPayment(userId: string, values: DebtPaymentFormValues) {
+  const client = requireSupabase()
+  const amount = Number(values.amount)
+
+  if (!userId) {
+    throw new Error('Debes iniciar sesion para registrar pagos.')
+  }
+  if (!values.debt_id) {
+    throw new Error('Selecciona una deuda valida.')
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('El pago debe ser mayor que 0.')
+  }
+  if (!values.payment_date) {
+    throw new Error('La fecha del pago es obligatoria.')
+  }
+  let categoryId: string | null = null
+  if (values.create_movement) {
+    if (!values.account_id) {
+      throw new Error('Selecciona la cuenta para crear el movimiento de gasto.')
+    }
+    await assertUserAccount(userId, values.account_id)
+    categoryId = await ensureDebtPaymentCategory(userId)
+  }
+
+  const { error } = await client.rpc('register_debt_payment', {
+    p_debt_id: values.debt_id,
+    p_amount: amount,
+    p_payment_date: values.payment_date,
+    p_payment_method: values.payment_method || null,
+    p_note: values.note.trim() || null,
+    p_create_movement: values.create_movement,
+    p_category_id: categoryId,
+    p_account_id: values.create_movement ? values.account_id : null,
+  })
+
+  if (error) throw error
+  notifyDebtsChanged()
+  if (values.create_movement) notifyMovementsChanged()
 }

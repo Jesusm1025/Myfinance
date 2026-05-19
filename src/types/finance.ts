@@ -4,6 +4,7 @@ export type AccountType = 'cash' | 'bank' | 'debit_card' | 'credit_card' | 'savi
 export type DebtType = 'loan' | 'credit_card' | 'family' | 'store' | 'other'
 export type DebtPaymentFrequency = 'once' | 'weekly' | 'biweekly' | 'monthly'
 export type DebtStatus = 'active' | 'paid' | 'overdue'
+export type CreditCardDebtStatus = 'current' | 'overdue' | 'delinquent'
 
 export type Account = {
   id: string
@@ -38,6 +39,8 @@ export type Movement = {
   id: string
   user_id: string
   category_id: string | null
+  debt_id?: string | null
+  debt_payment_id?: string | null
   type: MovementType
   amount: number
   description: string | null
@@ -137,11 +140,29 @@ export type Debt = {
   due_date: string | null
   interest_rate: number | null
   minimum_payment: number | null
+  card_last4: string | null
+  credit_limit: number | null
+  used_balance: number | null
+  statement_balance: number | null
+  statement_date: string | null
+  credit_card_status: CreditCardDebtStatus | null
   payment_frequency: DebtPaymentFrequency
   status: DebtStatus
   notes: string | null
   created_at: string
   updated_at?: string
+}
+
+export type DebtPayment = {
+  id: string
+  debt_id: string
+  user_id: string
+  transaction_id?: string | null
+  amount: number
+  payment_date: string
+  payment_method: PaymentMethod | null
+  note: string | null
+  created_at: string
 }
 
 export type DebtFormValues = {
@@ -155,7 +176,23 @@ export type DebtFormValues = {
   due_date: string
   interest_rate: string
   minimum_payment: string
+  card_last4: string
+  credit_limit: string
+  used_balance: string
+  statement_balance: string
+  statement_date: string
+  credit_card_status: CreditCardDebtStatus | ''
   payment_frequency: DebtPaymentFrequency
   status: DebtStatus
   notes: string
+}
+
+export type DebtPaymentFormValues = {
+  debt_id: string
+  amount: string
+  payment_date: string
+  payment_method: '' | PaymentMethod
+  create_movement: boolean
+  account_id: string
+  note: string
 }
