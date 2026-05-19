@@ -6,6 +6,7 @@ import { AuthPage } from './pages/AuthPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { MovementsPage } from './pages/MovementsPage'
+import { ReportsPage } from './pages/ReportsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ThemeProvider } from './theme/ThemeProvider'
 
@@ -30,6 +31,8 @@ function App() {
               <Route path="transactions" element={<MovementsPage />} />
               <Route path="categorias" element={<CategoriesPage />} />
               <Route path="categories" element={<CategoriesPage />} />
+              <Route path="reportes" element={<ReportsPage />} />
+              <Route path="reports" element={<ReportsPage />} />
               <Route path="configuracion" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
