@@ -1,10 +1,32 @@
-import { LogOut, Moon, Smartphone, Sun } from 'lucide-react'
+import { Coins, LogOut, Moon, Smartphone, Sun } from 'lucide-react'
+import { useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
+import { useCurrency } from '../currency/CurrencyProvider'
 import { useTheme } from '../theme/ThemeProvider'
+import type { CurrencyCode } from '../utils/currency'
+import { StatusMessage } from '../components/StatusMessage'
 
 export function SettingsPage() {
   const { user, signOut } = useAuth()
   const { theme, setTheme } = useTheme()
+  const { currency, options, setCurrency } = useCurrency()
+  const [savingCurrency, setSavingCurrency] = useState(false)
+  const [currencyError, setCurrencyError] = useState('')
+  const [currencySuccess, setCurrencySuccess] = useState('')
+
+  async function handleCurrencyChange(nextCurrency: CurrencyCode) {
+    setSavingCurrency(true)
+    setCurrencyError('')
+    setCurrencySuccess('')
+    try {
+      await setCurrency(nextCurrency)
+      setCurrencySuccess('Moneda actualizada correctamente.')
+    } catch (error) {
+      setCurrencyError(error instanceof Error ? error.message : 'No se pudo guardar la moneda.')
+    } finally {
+      setSavingCurrency(false)
+    }
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -53,6 +75,42 @@ export function SettingsPage() {
                 Oscuro
               </button>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-line bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-brand-50 p-2 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100">
+            <Coins className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-semibold">Moneda</h3>
+            <p className="mt-1 text-sm text-muted dark:text-slate-400">
+              Elige el simbolo usado en balances, movimientos, reportes y presupuestos.
+            </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {options.map((option) => (
+                <button
+                  key={option.code}
+                  type="button"
+                  disabled={savingCurrency}
+                  onClick={() => void handleCurrencyChange(option.code)}
+                  className={`rounded-lg border px-4 py-3 text-left transition disabled:opacity-60 ${
+                    currency === option.code
+                      ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-100'
+                      : 'border-line bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="block text-base font-semibold">{option.symbol}</span>
+                  <span className="mt-1 block text-sm">{option.label}</span>
+                </button>
+              ))}
+            </div>
+            {currencyError ? <div className="mt-4"><StatusMessage message={currencyError} /></div> : null}
+            {currencySuccess ? (
+              <div className="mt-4"><StatusMessage message={currencySuccess} variant="success" /></div>
+            ) : null}
           </div>
         </div>
       </section>

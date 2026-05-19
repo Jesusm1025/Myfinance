@@ -1,15 +1,10 @@
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import type { AccountType, MovementType, PaymentMethod } from '../types/finance'
-
-export const moneyFormatter = new Intl.NumberFormat('es-BO', {
-  style: 'currency',
-  currency: 'BOB',
-  maximumFractionDigits: 2,
-})
+import { formatCurrencyAmount } from './currency'
 
 export function formatMoney(value: number) {
-  return moneyFormatter.format(value)
+  return formatCurrencyAmount(value)
 }
 
 export function formatDate(value: string) {

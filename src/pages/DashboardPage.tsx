@@ -24,13 +24,12 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
-import { BudgetPanel } from '../components/BudgetPanel'
 import { EmptyState } from '../components/EmptyState'
 import { StatCard } from '../components/StatCard'
 import { StatusMessage } from '../components/StatusMessage'
-import { budgetsChangedEvent, categoriesChangedEvent, movementsChangedEvent } from '../events/financeEvents'
-import { listAllMovements, listCategories, listMonthlyBudgets, listMovements } from '../services/accounting'
-import type { Category, MonthlyBudget, Movement, MovementFilters } from '../types/finance'
+import { movementsChangedEvent } from '../events/financeEvents'
+import { listAllMovements, listMovements } from '../services/accounting'
+import type { Movement, MovementFilters } from '../types/finance'
 import { currentMonthValue, formatDate, formatMoney, monthRange, paymentMethodLabel } from '../utils/format'
 
 const emptyFilters: MovementFilters = {
@@ -58,8 +57,6 @@ export function DashboardPage() {
   const [month, setMonth] = useState(currentMonthValue())
   const [monthlyMovements, setMonthlyMovements] = useState<Movement[]>([])
   const [allMovements, setAllMovements] = useState<Movement[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [budgets, setBudgets] = useState<MonthlyBudget[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -71,14 +68,10 @@ export function DashboardPage() {
     Promise.all([
       listMovements(user.id, { ...emptyFilters, month }),
       listAllMovements(user.id),
-      listCategories(user.id),
-      listMonthlyBudgets(user.id, month).catch(() => [] as MonthlyBudget[]),
     ])
-      .then(([monthData, allData, categoryData, budgetData]) => {
+      .then(([monthData, allData]) => {
         setMonthlyMovements(monthData)
         setAllMovements(allData)
-        setCategories(categoryData)
-        setBudgets(budgetData)
       })
       .catch((loadError) => {
         setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el dashboard.')
@@ -92,12 +85,8 @@ export function DashboardPage() {
 
   useEffect(() => {
     window.addEventListener(movementsChangedEvent, loadDashboard)
-    window.addEventListener(categoriesChangedEvent, loadDashboard)
-    window.addEventListener(budgetsChangedEvent, loadDashboard)
     return () => {
       window.removeEventListener(movementsChangedEvent, loadDashboard)
-      window.removeEventListener(categoriesChangedEvent, loadDashboard)
-      window.removeEventListener(budgetsChangedEvent, loadDashboard)
     }
   }, [loadDashboard])
 
@@ -130,11 +119,6 @@ export function DashboardPage() {
   }, [monthlyMovements])
 
   const topExpenseCategory = expensesByCategory[0]
-
-  const categorySpend = useMemo(
-    () => expensesByCategory.map((category) => ({ categoryId: category.id, spent: category.value })),
-    [expensesByCategory],
-  )
 
   const latestMovements = useMemo(() => allMovements.slice(0, 5), [allMovements])
 
@@ -215,18 +199,6 @@ export function DashboardPage() {
           tone="coral"
         />
       </section>
-
-      {user ? (
-        <BudgetPanel
-          userId={user.id}
-          month={month}
-          categories={categories}
-          budgets={budgets}
-          categorySpend={categorySpend}
-          totalExpenses={monthlySummary.expenses}
-          onChanged={loadDashboard}
-        />
-      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
         <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">

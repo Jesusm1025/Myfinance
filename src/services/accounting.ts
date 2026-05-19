@@ -19,6 +19,7 @@ import {
   notifyCategoriesChanged,
   notifyMovementsChanged,
 } from '../events/financeEvents'
+import type { CurrencyCode } from '../utils/currency'
 import { monthRange } from '../utils/format'
 
 const defaultCategories: Array<Pick<Category, 'name' | 'type' | 'color'> & { icon: string }> = [
@@ -53,6 +54,38 @@ function requireSupabase() {
     throw new Error('Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.')
   }
   return supabase
+}
+
+function isPreferencesSchemaError(error: { message?: string; details?: string } | null) {
+  const message = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase()
+  return message.includes('user_preferences') || message.includes('schema cache') || message.includes('does not exist')
+}
+
+export async function getUserCurrencyPreference(userId: string) {
+  const client = requireSupabase()
+  const { data, error } = await client
+    .from('user_preferences')
+    .select('currency')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error && isPreferencesSchemaError(error)) return null
+  if (error) throw error
+  return data?.currency as CurrencyCode | null | undefined
+}
+
+export async function saveUserCurrencyPreference(userId: string, currency: CurrencyCode) {
+  const client = requireSupabase()
+  const { error } = await client.from('user_preferences').upsert(
+    {
+      user_id: userId,
+      currency,
+    },
+    { onConflict: 'user_id' },
+  )
+
+  if (error && isPreferencesSchemaError(error)) return
+  if (error) throw error
 }
 
 export async function ensureDefaultCategories(userId: string, email?: string | null) {

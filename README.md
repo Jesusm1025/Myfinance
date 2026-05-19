@@ -19,9 +19,10 @@ Aplicacion web responsive tipo PWA para contabilidad personal. Permite registrar
 
 - Registro, inicio y cierre de sesion.
 - Rutas protegidas por usuario.
-- Dashboard financiero con ingresos, gastos, balance, graficos y ultimos movimientos.
+- Dashboard financiero con ingresos, gastos, balance, mayor gasto, graficos y ultimos movimientos.
 - CRUD de movimientos, categorias, cuentas y transferencias entre cuentas.
-- Presupuesto mensual general y por categoria, con alertas al 80% y al superar el presupuesto.
+- Pantalla de presupuestos mensual general y por categoria, con alertas al 80% y al superar el presupuesto.
+- Configuracion de moneda con RD$ por defecto y opciones RD$, US$, €, Bs.
 - Reportes por mes o rango de fechas.
 - Exportacion a CSV, Excel y PDF.
 - PWA instalable en Android, iPhone y PC.
@@ -76,6 +77,7 @@ Ese script crea:
 - `transactions`
 - `account_transfers`
 - `monthly_budgets`
+- `user_preferences`
 - indices
 - triggers `updated_at`
 - politicas Row Level Security
@@ -86,6 +88,7 @@ Si ya tenias la base creada y solo quieres aplicar modulos nuevos o correcciones
 ```text
 supabase/accounts.sql
 supabase/monthly_budgets.sql
+supabase/user_preferences.sql
 supabase/security_hardening.sql
 ```
 
@@ -104,6 +107,7 @@ Reglas principales:
 - Si un movimiento tiene `account_id`, esa cuenta debe pertenecer al mismo usuario.
 - Las transferencias solo pueden usar cuentas del usuario autenticado.
 - Los presupuestos solo pueden usar categorias del usuario autenticado.
+- Las preferencias de moneda solo pueden ser leidas y editadas por su usuario.
 
 Variables permitidas en frontend:
 
@@ -158,7 +162,7 @@ VITE_SUPABASE_ANON_KEY
 6. Haz deploy.
 7. Si agregas variables despues del primer deploy, ejecuta **Redeploy**.
 
-El archivo `vercel.json` redirige rutas internas a `index.html`, por lo que recargar `/dashboard`, `/movimientos`, `/cuentas`, `/reportes` o `/categorias` no debe producir 404.
+El archivo `vercel.json` redirige rutas internas a `index.html`, por lo que recargar `/dashboard`, `/movimientos`, `/cuentas`, `/presupuestos`, `/budgets`, `/reportes` o `/categorias` no debe producir 404.
 
 ## Configurar Supabase Auth en produccion
 
@@ -206,6 +210,7 @@ Para probar instalacion:
 src/
   auth/          Autenticacion y rutas protegidas
   components/    Componentes compartidos
+  currency/      Preferencias de moneda
   hooks/         Realtime Sync
   lib/           Cliente Supabase
   pages/         Pantallas principales

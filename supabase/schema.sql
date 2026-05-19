@@ -14,6 +14,13 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.user_preferences (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  currency text not null default 'DOP' check (currency in ('DOP', 'USD', 'EUR', 'BOB')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.categories (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -47,6 +54,10 @@ begin
   insert into public.profiles (id, full_name)
   values (new.id, coalesce(new.raw_user_meta_data->>'full_name', new.email))
   on conflict (id) do nothing;
+
+  insert into public.user_preferences (user_id, currency)
+  values (new.id, 'DOP')
+  on conflict (user_id) do nothing;
 
   insert into public.categories (user_id, name, type, color, icon)
   values
@@ -175,6 +186,12 @@ before update on public.accounts
 for each row
 execute function public.set_updated_at();
 
+drop trigger if exists set_user_preferences_updated_at on public.user_preferences;
+create trigger set_user_preferences_updated_at
+before update on public.user_preferences
+for each row
+execute function public.set_updated_at();
+
 drop trigger if exists set_account_transfers_updated_at on public.account_transfers;
 create trigger set_account_transfers_updated_at
 before update on public.account_transfers
@@ -188,6 +205,7 @@ for each row
 execute function public.set_updated_at();
 
 alter table public.profiles enable row level security;
+alter table public.user_preferences enable row level security;
 alter table public.categories enable row level security;
 alter table public.accounts enable row level security;
 alter table public.transactions enable row level security;
@@ -197,6 +215,7 @@ alter table public.monthly_budgets enable row level security;
 grant usage on schema public to anon, authenticated;
 grant usage on type public.transaction_type to authenticated;
 grant select, insert, update, delete on public.profiles to authenticated;
+grant select, insert, update, delete on public.user_preferences to authenticated;
 grant select, insert, update, delete on public.categories to authenticated;
 grant select, insert, update, delete on public.accounts to authenticated;
 grant select, insert, update, delete on public.transactions to authenticated;
@@ -223,6 +242,27 @@ drop policy if exists "Users can delete their profile" on public.profiles;
 create policy "Users can delete their profile"
   on public.profiles for delete
   using (auth.uid() = id);
+
+drop policy if exists "Users can read their preferences" on public.user_preferences;
+create policy "Users can read their preferences"
+  on public.user_preferences for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can create their preferences" on public.user_preferences;
+create policy "Users can create their preferences"
+  on public.user_preferences for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update their preferences" on public.user_preferences;
+create policy "Users can update their preferences"
+  on public.user_preferences for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete their preferences" on public.user_preferences;
+create policy "Users can delete their preferences"
+  on public.user_preferences for delete
+  using (auth.uid() = user_id);
 
 drop policy if exists "Users can read their categories" on public.categories;
 create policy "Users can read their categories"

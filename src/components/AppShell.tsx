@@ -1,24 +1,27 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { BarChart3, FileBarChart, FolderTree, Landmark, LogOut, Moon, Settings, Sun, WalletCards } from 'lucide-react'
+import { BarChart3, FileBarChart, FolderTree, Landmark, LogOut, Moon, PiggyBank, Settings, Sun, WalletCards } from 'lucide-react'
 import { useEffect } from 'react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
+import { useCurrency } from '../currency/CurrencyProvider'
 import { useRealtimeSync } from '../hooks/useRealtimeSync'
 import { ensureDefaultAccounts, ensureDefaultCategories } from '../services/accounting'
 import { useTheme } from '../theme/ThemeProvider'
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: BarChart3, end: true },
-  { to: '/movimientos', label: 'Movimientos', icon: WalletCards, end: false },
-  { to: '/categorias', label: 'Categorias', icon: FolderTree, end: false },
-  { to: '/cuentas', label: 'Cuentas', icon: Landmark, end: false },
-  { to: '/reportes', label: 'Reportes', icon: FileBarChart, end: false },
-  { to: '/configuracion', label: 'Configuracion', icon: Settings, end: false },
+  { to: '/', label: 'Dashboard', mobileLabel: 'Inicio', icon: BarChart3, end: true },
+  { to: '/movimientos', label: 'Movimientos', mobileLabel: 'Movs.', icon: WalletCards, end: false },
+  { to: '/categorias', label: 'Categorias', mobileLabel: 'Categ.', icon: FolderTree, end: false },
+  { to: '/cuentas', label: 'Cuentas', mobileLabel: 'Cuentas', icon: Landmark, end: false },
+  { to: '/presupuestos', label: 'Presupuestos', mobileLabel: 'Presup.', icon: PiggyBank, end: false },
+  { to: '/reportes', label: 'Reportes', mobileLabel: 'Reportes', icon: FileBarChart, end: false },
+  { to: '/configuracion', label: 'Configuracion', mobileLabel: 'Ajustes', icon: Settings, end: false },
 ]
 
 export function AppShell() {
   const { user, signOut } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const { currency } = useCurrency()
   const sync = useRealtimeSync(user?.id)
 
   useEffect(() => {
@@ -103,13 +106,13 @@ export function AppShell() {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-8">
+        <main key={currency} className="mx-auto w-full max-w-7xl px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-8">
           <Outlet />
         </main>
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:hidden">
-        <div className="mx-auto grid max-w-xl grid-cols-6 gap-1">
+        <div className="mx-auto grid max-w-2xl grid-cols-7 gap-1">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
@@ -117,7 +120,7 @@ export function AppShell() {
               end={item.end}
               className={({ isActive }) =>
                 clsx(
-                  'flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[11px] font-medium transition',
+                  'flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-0.5 text-[10px] font-medium transition',
                   isActive
                     ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100'
                     : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800',
@@ -125,7 +128,7 @@ export function AppShell() {
               }
             >
               <item.icon className="h-5 w-5" />
-              <span className="max-w-full truncate">{item.label}</span>
+              <span className="max-w-full truncate">{item.mobileLabel}</span>
             </NavLink>
           ))}
         </div>
