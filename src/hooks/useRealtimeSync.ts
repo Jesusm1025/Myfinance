@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { notifyCategoriesChanged, notifyMovementsChanged } from '../events/financeEvents'
+import { notifyBudgetsChanged, notifyCategoriesChanged, notifyMovementsChanged } from '../events/financeEvents'
 import { supabase } from '../lib/supabase'
 
 type SyncStatus = 'idle' | 'connecting' | 'connected' | 'error'
@@ -40,6 +40,16 @@ export function useRealtimeSync(userId?: string) {
           filter: `user_id=eq.${userId}`,
         },
         () => notifyCategoriesChanged(),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'monthly_budgets',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => notifyBudgetsChanged(),
       )
       .subscribe((nextStatus, realtimeError) => {
         if (nextStatus === 'SUBSCRIBED') {
