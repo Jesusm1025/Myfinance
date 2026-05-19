@@ -1,72 +1,144 @@
 # Mi Contabilidad Personal
 
-PWA responsive para contabilidad personal con React, Vite, Tailwind CSS, Supabase Auth y PostgreSQL en Supabase.
+Aplicacion web responsive tipo PWA para contabilidad personal. Permite registrar ingresos, gastos, categorias, cuentas, transferencias, presupuestos mensuales y reportes, con datos sincronizados en Supabase por usuario autenticado.
 
-## Incluye
+## Tecnologias usadas
 
-- Registro e inicio de sesion con Supabase Auth.
-- Rutas protegidas para dashboard, movimientos, categorias y configuracion.
-- CRUD de movimientos y categorias.
-- Filtros por mes, tipo, categoria y metodo de pago.
-- Dashboard financiero con graficos Recharts.
-- Sincronizacion con Supabase como fuente central de datos.
-- Manifest, iconos PNG y service worker para instalacion como PWA.
-- SQL con tablas PostgreSQL, indices y Row Level Security por usuario.
+- React + Vite
+- TypeScript
+- Tailwind CSS
+- Supabase Auth
+- Supabase PostgreSQL
+- Supabase Realtime
+- Recharts
+- vite-plugin-pwa + Workbox
+- write-excel-file, jsPDF y jspdf-autotable para exportaciones
+- Vercel para despliegue
 
-## Configuracion local
+## Funcionalidades
 
-1. Instala dependencias:
+- Registro, inicio y cierre de sesion.
+- Rutas protegidas por usuario.
+- Dashboard financiero con ingresos, gastos, balance, graficos y ultimos movimientos.
+- CRUD de movimientos, categorias, cuentas y transferencias entre cuentas.
+- Presupuesto mensual general y por categoria, con alertas al 80% y al superar el presupuesto.
+- Reportes por mes o rango de fechas.
+- Exportacion a CSV, Excel y PDF.
+- PWA instalable en Android, iPhone y PC.
+- Modo claro y oscuro.
+- Diseno responsive para celular y escritorio.
+
+## Instalacion
+
+Requisitos:
+
+- Node.js
+- pnpm
+- Proyecto de Supabase
+
+Instala dependencias:
 
 ```bash
 pnpm install
 ```
 
-2. Copia variables de entorno:
+Copia el archivo de variables:
 
 ```bash
-cp .env.example .env
+cp .env.example .env.local
 ```
 
-3. Completa `.env`:
+Completa `.env.local`:
 
-```bash
+```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-No uses ni expongas `service_role_key` en el frontend.
+No uses `service_role_key` en esta app. El frontend debe usar solo la anon key.
 
-4. En Supabase SQL Editor, ejecuta `supabase/schema.sql`.
+## Configurar Supabase
 
-5. Inicia la app:
+1. Entra a Supabase.
+2. Abre tu proyecto.
+3. Ve a **SQL Editor**.
+4. Ejecuta el archivo principal:
+
+```text
+supabase/schema.sql
+```
+
+Ese script crea:
+
+- `profiles`
+- `categories`
+- `accounts`
+- `transactions`
+- `account_transfers`
+- `monthly_budgets`
+- indices
+- triggers `updated_at`
+- politicas Row Level Security
+- publicacion Realtime cuando existe `supabase_realtime`
+
+Si ya tenias la base creada y solo quieres aplicar modulos nuevos o correcciones puntuales, puedes ejecutar tambien:
+
+```text
+supabase/accounts.sql
+supabase/monthly_budgets.sql
+supabase/security_hardening.sql
+```
+
+`security_hardening.sql` refuerza RLS para evitar que un usuario pueda asociar movimientos o presupuestos a categorias/cuentas de otro usuario.
+
+## Seguridad y RLS
+
+La app usa Supabase como fuente central de datos. Las tablas tienen Row Level Security activado y politicas basadas en `auth.uid()`.
+
+Reglas principales:
+
+- Cada usuario solo puede leer, crear, editar y eliminar filas con su propio `user_id`.
+- `profiles.id` debe coincidir con `auth.uid()`.
+- `transactions.user_id` debe coincidir con `auth.uid()`.
+- Si un movimiento tiene `category_id`, esa categoria debe pertenecer al mismo usuario.
+- Si un movimiento tiene `account_id`, esa cuenta debe pertenecer al mismo usuario.
+- Las transferencias solo pueden usar cuentas del usuario autenticado.
+- Los presupuestos solo pueden usar categorias del usuario autenticado.
+
+Variables permitidas en frontend:
+
+```env
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+No subas `.env`, `.env.local` ni claves reales al repositorio.
+
+## Ejecutar localmente
 
 ```bash
 pnpm dev
 ```
 
-## Despliegue en Vercel
+Abre:
 
-### Subir el proyecto a GitHub
-
-1. Crea un repositorio nuevo en GitHub.
-2. Desde la carpeta del proyecto, inicializa Git si aun no lo hiciste:
-
-```bash
-git init
-git add .
-git commit -m "Initial deploy-ready PWA"
-git branch -M main
-git remote add origin https://github.com/TU_USUARIO/TU_REPOSITORIO.git
-git push -u origin main
+```text
+http://localhost:5173
 ```
 
-3. No subas `.env`; el archivo esta ignorado por `.gitignore`.
+Comandos utiles:
 
-### Importar en Vercel
+```bash
+pnpm lint
+pnpm build
+pnpm preview
+```
 
-1. Entra a Vercel.
-2. Selecciona **Add New > Project**.
-3. Importa el repositorio de GitHub.
+## Despliegue en Vercel
+
+1. Sube el proyecto a GitHub.
+2. Entra a Vercel.
+3. Importa el repositorio.
 4. Usa esta configuracion:
 
 ```text
@@ -76,7 +148,7 @@ Build Command: pnpm build
 Output Directory: dist
 ```
 
-5. Agrega estas variables en **Environment Variables**:
+5. Agrega variables de entorno:
 
 ```text
 VITE_SUPABASE_URL
@@ -84,101 +156,63 @@ VITE_SUPABASE_ANON_KEY
 ```
 
 6. Haz deploy.
-7. Si agregaste las variables despues del primer deploy, ve a **Deployments**, abre el ultimo deploy y usa **Redeploy**.
+7. Si agregas variables despues del primer deploy, ejecuta **Redeploy**.
 
-### Probar produccion
+El archivo `vercel.json` redirige rutas internas a `index.html`, por lo que recargar `/dashboard`, `/movimientos`, `/cuentas`, `/reportes` o `/categorias` no debe producir 404.
 
-1. Abre la URL final de Vercel.
-2. Registra una cuenta o inicia sesion.
-3. Crea una categoria y un movimiento.
-4. Recarga rutas internas como `/movimientos`, `/categorias` o `/configuracion`; `vercel.json` redirige esas rutas a `index.html` para evitar 404.
-5. Abre la misma cuenta desde celular y PC para confirmar sincronizacion.
+## Configurar Supabase Auth en produccion
 
-### Instalar como PWA
+Despues del deploy:
 
-La app no depende de App Store, Play Store ni ninguna tienda. Se instala desde el navegador.
-
-Android con Chrome:
-
-1. Abre la URL de Vercel en Chrome.
-2. Menu de Chrome > **Agregar a pantalla principal** o **Instalar app**.
-3. Abre la app desde el icono instalado.
-
-iPhone con Safari:
-
-1. Abre la URL de Vercel en Safari.
-2. Toca compartir.
-3. Selecciona **Agregar a pantalla de inicio**.
-4. Abre la app desde el icono instalado.
-
-PC con Chrome o Edge:
-
-1. Abre la URL de Vercel.
-2. Usa el icono de instalacion en la barra de direcciones, o menu > **Instalar app**.
-3. Abre la app instalada desde el sistema.
-
-## Configuracion de Supabase para produccion
-
-Despues de desplegar en Vercel:
-
-1. Copia la URL final, por ejemplo:
+1. Copia la URL final de Vercel.
+2. En Supabase, ve a **Authentication > URL Configuration**.
+3. Coloca la URL de Vercel como **Site URL**.
+4. Agrega Redirect URLs:
 
 ```text
-https://mi-contabilidad-personal.vercel.app
+https://tu-app.vercel.app
+https://tu-app.vercel.app/auth
+https://tu-app.vercel.app/auth/callback
+https://tu-app.vercel.app/*
 ```
 
-2. Entra a Supabase.
-3. Abre tu proyecto.
-4. Ve a **Authentication > URL Configuration**.
-5. En **Site URL**, coloca la URL final de Vercel:
-
-```text
-https://mi-contabilidad-personal.vercel.app
-```
-
-6. En **Redirect URLs**, agrega:
-
-```text
-https://mi-contabilidad-personal.vercel.app
-https://mi-contabilidad-personal.vercel.app/auth
-https://mi-contabilidad-personal.vercel.app/auth/callback
-https://mi-contabilidad-personal.vercel.app/*
-```
-
-7. Si usas tambien desarrollo local, conserva:
+Para desarrollo local conserva:
 
 ```text
 http://localhost:5173
 http://localhost:5173/*
 ```
 
-8. Guarda los cambios.
-9. Prueba registro, login, logout y recuperacion de sesion desde la URL de Vercel.
-
-## Variables de entorno
-
-El frontend usa solamente:
-
-```text
-VITE_SUPABASE_URL
-VITE_SUPABASE_ANON_KEY
-```
-
-No agregues claves secretas al frontend. `service_role_key` solo debe usarse en entornos backend seguros, nunca en esta app Vite.
-
 ## PWA
 
 La app incluye:
 
 - `public/manifest.json`
-- iconos PNG para Android, iPhone y escritorio
+- iconos PNG y maskable icon
 - `apple-touch-icon.png`
 - service worker generado por `vite-plugin-pwa`
-- fallback de navegacion a `index.html`
+- `start_url: /`
+- `display: standalone`
 
-Para probar un build local:
+Para probar instalacion:
 
-```bash
-pnpm build
-pnpm preview
+- Android Chrome: abre la URL y usa **Instalar app** o **Agregar a pantalla principal**.
+- iPhone Safari: compartir > **Agregar a pantalla de inicio**.
+- PC Chrome/Edge: usa el icono de instalacion en la barra o menu > **Instalar app**.
+
+## Estructura principal
+
+```text
+src/
+  auth/          Autenticacion y rutas protegidas
+  components/    Componentes compartidos
+  hooks/         Realtime Sync
+  lib/           Cliente Supabase
+  pages/         Pantallas principales
+  services/      Acceso a datos Supabase
+  theme/         Modo claro/oscuro
+  types/         Tipos TypeScript
+  utils/         Formato, reportes, cuentas y exportaciones
+supabase/        SQL principal y scripts incrementales
+public/          Manifest e iconos PWA
 ```

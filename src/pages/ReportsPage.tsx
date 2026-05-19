@@ -135,11 +135,11 @@ export function ReportsPage() {
     fileSuffix: currentFileSuffix,
   }
 
-  function handleExport(action: () => void, message: string) {
+  async function handleExport(action: () => void | Promise<void>, message: string) {
     setError('')
     setSuccess('')
     try {
-      action()
+      await action()
       setSuccess(message)
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : 'No se pudo descargar el reporte.')
@@ -162,7 +162,7 @@ export function ReportsPage() {
             type="button"
             disabled={!canExport}
             onClick={() =>
-              handleExport(() => exportMovementsToCsv(exportPayload), 'CSV descargado correctamente.')
+              void handleExport(() => exportMovementsToCsv(exportPayload), 'CSV descargado correctamente.')
             }
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           >
@@ -173,7 +173,7 @@ export function ReportsPage() {
             type="button"
             disabled={!canExport}
             onClick={() =>
-              handleExport(() => exportReportToExcel(exportPayload), 'Excel descargado correctamente.')
+              void handleExport(() => exportReportToExcel(exportPayload), 'Excel descargado correctamente.')
             }
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           >
@@ -184,7 +184,7 @@ export function ReportsPage() {
             type="button"
             disabled={!canExport}
             onClick={() =>
-              handleExport(() => exportSummaryToPdf(exportPayload), 'PDF descargado correctamente.')
+              void handleExport(() => exportSummaryToPdf(exportPayload), 'PDF descargado correctamente.')
             }
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >

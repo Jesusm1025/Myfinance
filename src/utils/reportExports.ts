@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import * as XLSX from 'xlsx'
+import writeXlsxFile, { type SheetData } from 'write-excel-file/browser'
 import type { Movement } from '../types/finance'
 import { formatDate, formatMoney, movementTypeLabel, paymentMethodLabel } from './format'
 import type { CategoryReportRow, PaymentMethodReportRow, ReportSummary } from './reports'
@@ -13,6 +13,8 @@ type ExportPayload = {
   periodLabel: string
   fileSuffix: string
 }
+
+type ExcelRow = Record<string, string | number>
 
 function downloadBlob(content: BlobPart, mimeType: string, fileName: string) {
   const blob = new Blob([content], { type: mimeType })
@@ -52,6 +54,17 @@ function summaryRows(payload: ExportPayload) {
   ]
 }
 
+function worksheetData(name: string, rows: ExcelRow[]) {
+  const safeRows = rows.length ? rows : [{ Estado: 'Sin datos' }]
+  const headers = Object.keys(safeRows[0])
+
+  return {
+    sheet: name,
+    data: [headers, ...safeRows.map((row) => headers.map((header) => row[header] ?? ''))] satisfies SheetData,
+    columns: headers.map(() => ({ width: 18 })),
+  }
+}
+
 export function exportMovementsToCsv(payload: ExportPayload) {
   const rows = movementRows(payload.movements)
   const headers = ['Fecha', 'Tipo', 'Categoria', 'Descripcion', 'Metodo', 'Monto']
@@ -63,11 +76,11 @@ export function exportMovementsToCsv(payload: ExportPayload) {
   downloadBlob(`\uFEFF${csv}`, 'text/csv;charset=utf-8', `movimientos-${payload.fileSuffix}.csv`)
 }
 
-export function exportReportToExcel(payload: ExportPayload) {
-  const workbook = XLSX.utils.book_new()
-  const movementsSheet = XLSX.utils.json_to_sheet(movementRows(payload.movements))
-  const summarySheet = XLSX.utils.json_to_sheet(summaryRows(payload))
-  const categoriesSheet = XLSX.utils.json_to_sheet(
+export async function exportReportToExcel(payload: ExportPayload) {
+  const movementsSheet = worksheetData('Movimientos', movementRows(payload.movements))
+  const summarySheet = worksheetData('Resumen', summaryRows(payload))
+  const categoriesSheet = worksheetData(
+    'Categorias',
     payload.categories.map((row) => ({
       Categoria: row.name,
       Ingresos: row.income,
@@ -76,7 +89,8 @@ export function exportReportToExcel(payload: ExportPayload) {
       Movimientos: row.count,
     })),
   )
-  const methodsSheet = XLSX.utils.json_to_sheet(
+  const methodsSheet = worksheetData(
+    'Metodos',
     payload.paymentMethods.map((row) => ({
       Metodo: row.name,
       Ingresos: row.income,
@@ -86,11 +100,9 @@ export function exportReportToExcel(payload: ExportPayload) {
     })),
   )
 
-  XLSX.utils.book_append_sheet(workbook, movementsSheet, 'Movimientos')
-  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen')
-  XLSX.utils.book_append_sheet(workbook, categoriesSheet, 'Categorias')
-  XLSX.utils.book_append_sheet(workbook, methodsSheet, 'Metodos')
-  XLSX.writeFile(workbook, `reporte-financiero-${payload.fileSuffix}.xlsx`)
+  await writeXlsxFile([movementsSheet, summarySheet, categoriesSheet, methodsSheet]).toFile(
+    `reporte-financiero-${payload.fileSuffix}.xlsx`,
+  )
 }
 
 export function exportSummaryToPdf(payload: ExportPayload) {
