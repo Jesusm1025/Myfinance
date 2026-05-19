@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { AlertTriangle, CalendarClock, CheckCircle2, CircleDollarSign, ClipboardList, CreditCard, Edit2, History, LoaderCircle, Plus, Save, ShieldCheck, TrendingUp, Trash2, WalletCards, X } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CheckCircle2, CircleDollarSign, ClipboardList, CreditCard, Edit2, GraduationCap, History, LoaderCircle, Plus, Save, ShieldCheck, TrendingUp, Trash2, WalletCards, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { EmptyState } from '../components/EmptyState'
 import { StatCard } from '../components/StatCard'
 import { StatusMessage } from '../components/StatusMessage'
 import { debtsChangedEvent } from '../events/financeEvents'
-import { deleteDebt, listAccounts, listDebtPayments, listDebts, listDebtSubaccounts, registerDebtPayment, saveDebt } from '../services/accounting'
-import type { Account, Debt, DebtFormValues, DebtPayment, DebtPaymentFormValues, DebtStatus, DebtSubaccount, DebtSubaccountFormValues } from '../types/finance'
+import { createEducationDebtSeed, deleteDebt, listAccounts, listDebtInstallments, listDebtPayments, listDebts, listDebtSubaccounts, payDebtInstallment, registerDebtPayment, saveDebt } from '../services/accounting'
+import type { Account, Debt, DebtFormValues, DebtInstallment, DebtPayment, DebtPaymentFormValues, DebtStatus, DebtSubaccount, DebtSubaccountFormValues } from '../types/finance'
 import {
   creditCardDebtStatusLabel,
   debtFrequencyLabel,
+  debtInstallmentStatusLabel,
   debtStatusLabel,
   debtTypeLabel,
   formatDate,
@@ -34,6 +35,7 @@ const initialDebt: DebtFormValues = {
   name: '',
   type: 'loan',
   creditor: '',
+  currency: 'DOP',
   initial_amount: '',
   outstanding_balance: '',
   start_date: new Date().toISOString().slice(0, 10),
@@ -80,6 +82,7 @@ export function DebtsPage() {
   const [debts, setDebts] = useState<Debt[]>([])
   const [payments, setPayments] = useState<DebtPayment[]>([])
   const [subaccounts, setSubaccounts] = useState<DebtSubaccount[]>([])
+  const [installments, setInstallments] = useState<DebtInstallment[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [values, setValues] = useState<DebtFormValues>(initialDebt)
   const [paymentValues, setPaymentValues] = useState<Record<string, DebtPaymentFormValues>>({})
@@ -90,6 +93,8 @@ export function DebtsPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submittingPaymentId, setSubmittingPaymentId] = useState('')
+  const [submittingEducationSeed, setSubmittingEducationSeed] = useState(false)
+  const [payingInstallmentId, setPayingInstallmentId] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -98,15 +103,17 @@ export function DebtsPage() {
     setLoading(true)
     setError('')
     try {
-      const [debtData, paymentData, subaccountData, accountData] = await Promise.all([
+      const [debtData, paymentData, subaccountData, installmentData, accountData] = await Promise.all([
         listDebts(user.id),
         listDebtPayments(user.id).catch(() => [] as DebtPayment[]),
         listDebtSubaccounts(user.id).catch(() => [] as DebtSubaccount[]),
+        listDebtInstallments(user.id).catch(() => [] as DebtInstallment[]),
         listAccounts(user.id).catch(() => [] as Account[]),
       ])
       setDebts(debtData)
       setPayments(paymentData)
       setSubaccounts(subaccountData)
+      setInstallments(installmentData)
       setAccounts(accountData)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'No se pudieron cargar las deudas.')
@@ -199,6 +206,16 @@ export function DebtsPage() {
     })
     return rows
   }, [subaccounts])
+
+  const installmentsByDebt = useMemo(() => {
+    const rows = new Map<string, DebtInstallment[]>()
+    installments.forEach((installment) => {
+      const current = rows.get(installment.debt_id) ?? []
+      current.push(installment)
+      rows.set(installment.debt_id, current)
+    })
+    return rows
+  }, [installments])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -334,6 +351,42 @@ export function DebtsPage() {
     }
   }
 
+  async function handleCreateEducationPlan() {
+    if (!user) return
+    setSubmittingEducationSeed(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      await createEducationDebtSeed(user.id)
+      setSuccess('Deuda de educacion y cuotas creadas correctamente.')
+      await loadDebts()
+    } catch (seedError) {
+      setError(seedError instanceof Error ? seedError.message : 'No se pudo crear el plan de educacion.')
+    } finally {
+      setSubmittingEducationSeed(false)
+    }
+  }
+
+  async function handlePayInstallment(installment: DebtInstallment) {
+    if (!user || installment.status === 'paid') return
+    if (!window.confirm(`Marcar como pagada la cuota de ${formatMoney(Number(installment.amount))}?`)) return
+
+    setPayingInstallmentId(installment.id)
+    setError('')
+    setSuccess('')
+
+    try {
+      await payDebtInstallment(user.id, installment.id)
+      setSuccess('Cuota pagada correctamente y saldo de deuda actualizado.')
+      await loadDebts()
+    } catch (paymentError) {
+      setError(paymentError instanceof Error ? paymentError.message : 'No se pudo pagar la cuota.')
+    } finally {
+      setPayingInstallmentId('')
+    }
+  }
+
   function togglePaymentForm(debt: Debt) {
     const nextOpenId = openPaymentDebtId === debt.id ? '' : debt.id
     setOpenPaymentDebtId(nextOpenId)
@@ -398,14 +451,25 @@ export function DebtsPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={startCreate}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700"
-        >
-          {showForm ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
-          {showForm ? 'Cerrar formulario' : 'Registrar deuda'}
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => void handleCreateEducationPlan()}
+            disabled={submittingEducationSeed}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-brand-500/30 px-4 py-3 text-sm font-semibold text-brand-700 shadow-sm hover:bg-brand-50 disabled:opacity-60 dark:border-brand-400/30 dark:text-brand-100 dark:hover:bg-brand-500/10"
+          >
+            {submittingEducationSeed ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <GraduationCap className="h-5 w-5" />}
+            Crear plan educacion
+          </button>
+          <button
+            type="button"
+            onClick={startCreate}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700"
+          >
+            {showForm ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+            {showForm ? 'Cerrar formulario' : 'Registrar deuda'}
+          </button>
+        </div>
       </div>
 
       {error ? <StatusMessage message={error} /> : null}
@@ -528,6 +592,7 @@ export function DebtsPage() {
               >
                 <option value="loan">Prestamo</option>
                 <option value="credit_card">Tarjeta de credito</option>
+                <option value="education">Educacion</option>
                 <option value="family">Familiar</option>
                 <option value="store">Tienda</option>
                 <option value="other">Otro</option>
@@ -562,6 +627,22 @@ export function DebtsPage() {
                 <option value="weekly">Semanal</option>
                 <option value="biweekly">Quincenal</option>
                 <option value="monthly">Mensual</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <span className={labelClass}>Moneda</span>
+              <select
+                value={values.currency}
+                onChange={(event) =>
+                  setValues((current) => ({ ...current, currency: event.target.value as DebtFormValues['currency'] }))
+                }
+                className={`mt-1 ${fieldClass}`}
+              >
+                <option value="DOP">RD$ - Peso dominicano</option>
+                <option value="USD">US$ - Dolar estadounidense</option>
+                <option value="EUR">Euro</option>
+                <option value="BOB">Bs - Bolivar</option>
               </select>
             </label>
 
@@ -1061,6 +1142,7 @@ export function DebtsPage() {
                   <DebtMetric label="Saldo pendiente" value={formatMoney(Number(debt.outstanding_balance))} />
                   <DebtMetric label="Monto inicial" value={formatMoney(Number(debt.initial_amount))} />
                   <DebtMetric label="Progreso pagado" value={`${debtProgress(debt)}%`} />
+                  <DebtMetric label="Moneda" value={debt.currency ?? 'DOP'} />
                   <DebtMetric label="Frecuencia" value={debtFrequencyLabel(debt.payment_frequency)} />
                   <DebtMetric
                     label={debt.type === 'credit_card' ? 'Limite de pago' : 'Vencimiento'}
@@ -1083,6 +1165,14 @@ export function DebtsPage() {
                   <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-muted dark:bg-slate-950 dark:text-slate-400">
                     {debt.notes}
                   </p>
+                ) : null}
+
+                {(installmentsByDebt.get(debt.id) ?? []).length ? (
+                  <DebtInstallmentsPanel
+                    installments={installmentsByDebt.get(debt.id) ?? []}
+                    payingInstallmentId={payingInstallmentId}
+                    onPay={(installment) => void handlePayInstallment(installment)}
+                  />
                 ) : null}
 
                 <div className="mt-4 rounded-lg border border-line bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
@@ -1338,6 +1428,7 @@ function debtToFormValues(debt: Debt, subaccounts: DebtSubaccount[] = []): DebtF
     name: debt.name,
     type: debt.type,
     creditor: debt.creditor,
+    currency: debt.currency ?? 'DOP',
     initial_amount: String(debt.initial_amount),
     outstanding_balance: String(debt.outstanding_balance),
     start_date: debt.start_date,
@@ -1564,6 +1655,87 @@ function CreditCardDebtDetails({ debt, subaccounts }: { debt: Debt; subaccounts:
       </div>
     </section>
   )
+}
+
+function DebtInstallmentsPanel({
+  installments,
+  payingInstallmentId,
+  onPay,
+}: {
+  installments: DebtInstallment[]
+  payingInstallmentId: string
+  onPay: (installment: DebtInstallment) => void
+}) {
+  const today = new Date().toISOString().slice(0, 10)
+  const total = installments.reduce((sum, installment) => sum + Number(installment.amount), 0)
+  const paid = installments
+    .filter((installment) => installment.status === 'paid')
+    .reduce((sum, installment) => sum + Number(installment.amount), 0)
+  const progress = total > 0 ? Math.round((paid / total) * 100) : 0
+
+  return (
+    <section className="mt-4 rounded-lg border border-line bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <GraduationCap className="h-4 w-4 text-brand-700 dark:text-brand-100" />
+          <div>
+            <h4 className="text-sm font-semibold text-ink dark:text-white">Cuotas asociadas</h4>
+            <p className="text-xs text-muted dark:text-slate-400">
+              {installments.length} cuota(s) - {formatMoney(paid)} pagados de {formatMoney(total)}
+            </p>
+          </div>
+        </div>
+        <p className="text-lg font-semibold text-brand-700 dark:text-brand-100">{progress}%</p>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+        <div className="h-full rounded-full bg-brand-600 dark:bg-brand-400" style={{ width: `${Math.min(100, progress)}%` }} />
+      </div>
+      <div className="mt-4 space-y-2">
+        {installments.map((installment) => {
+          const computedStatus = installment.status === 'pending' && installment.due_date && installment.due_date < today
+            ? 'overdue'
+            : installment.status
+          return (
+            <div
+              key={installment.id}
+              className="flex flex-col gap-3 rounded-lg border border-line bg-slate-50 p-3 text-sm dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-ink dark:text-white">{formatMoney(Number(installment.amount))}</p>
+                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${installmentStatusTone(computedStatus)}`}>
+                    {debtInstallmentStatusLabel(computedStatus)}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted dark:text-slate-400">{installment.description}</p>
+                <p className="mt-1 text-xs text-muted dark:text-slate-400">
+                  Vence: {installment.due_date ? formatDate(installment.due_date) : 'Sin fecha especifica'}
+                  {installment.paid_at ? ` - Pagada: ${formatDate(installment.paid_at)}` : ''}
+                </p>
+              </div>
+              {installment.status !== 'paid' ? (
+                <button
+                  type="button"
+                  onClick={() => onPay(installment)}
+                  disabled={payingInstallmentId === installment.id}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+                >
+                  {payingInstallmentId === installment.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Pagar cuota
+                </button>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function installmentStatusTone(status: DebtInstallment['status']) {
+  if (status === 'paid') return 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100'
+  if (status === 'overdue') return 'bg-coral-50 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400'
+  return 'bg-gold-50 text-gold-600 dark:bg-gold-500/15 dark:text-gold-400'
 }
 
 function DebtAlertCard({

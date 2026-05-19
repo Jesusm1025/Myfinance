@@ -8,6 +8,7 @@ import type {
   BudgetFormValues,
   Debt,
   DebtFormValues,
+  DebtInstallment,
   DebtPayment,
   DebtPaymentFormValues,
   DebtSubaccount,
@@ -81,6 +82,7 @@ function isDebtAdvancedSchemaError(error: { message?: string; details?: string; 
   const message = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.code ?? ''}`.toLowerCase()
   return (
     message.includes('debt_subaccounts') ||
+    message.includes('debt_installments') ||
     message.includes('balance_dop') ||
     message.includes('balance_usd') ||
     message.includes('minimum_payment_dop') ||
@@ -590,6 +592,20 @@ export async function listDebtSubaccounts(userId: string) {
   return data as DebtSubaccount[]
 }
 
+export async function listDebtInstallments(userId: string) {
+  const client = requireSupabase()
+  const { data, error } = await client
+    .from('debt_installments')
+    .select('*')
+    .eq('user_id', userId)
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
+
+  if (error && isDebtAdvancedSchemaError(error)) return [] as DebtInstallment[]
+  if (error) throw error
+  return data as DebtInstallment[]
+}
+
 export async function saveDebt(userId: string, values: DebtFormValues) {
   const client = requireSupabase()
   const initialAmount = Number(values.initial_amount)
@@ -678,6 +694,7 @@ export async function saveDebt(userId: string, values: DebtFormValues) {
     name: values.name.trim(),
     type: values.type,
     creditor: values.creditor.trim(),
+    currency: values.currency,
     initial_amount: initialAmount,
     outstanding_balance: outstandingBalance,
     start_date: values.start_date,
@@ -755,6 +772,46 @@ export async function saveDebt(userId: string, values: DebtFormValues) {
     if (deleteSubaccountsError && !isDebtAdvancedSchemaError(deleteSubaccountsError)) throw deleteSubaccountsError
   }
 
+  notifyDebtsChanged()
+}
+
+export async function createEducationDebtSeed(userId: string) {
+  if (!userId) {
+    throw new Error('Debes iniciar sesion para crear el plan de cuotas.')
+  }
+
+  const client = requireSupabase()
+  const { error } = await client.rpc('create_education_debt_seed')
+  if (error) {
+    if (isDebtAdvancedSchemaError(error)) {
+      throw new Error('Falta ejecutar el SQL actualizado de cuotas de deudas en Supabase.')
+    }
+    throw error
+  }
+  notifyDebtsChanged()
+}
+
+export async function payDebtInstallment(userId: string, installmentId: string) {
+  if (!userId) {
+    throw new Error('Debes iniciar sesion para pagar cuotas.')
+  }
+  if (!installmentId) {
+    throw new Error('Selecciona una cuota valida.')
+  }
+
+  const client = requireSupabase()
+  const { error } = await client.rpc('pay_debt_installment', {
+    p_installment_id: installmentId,
+    p_payment_date: new Date().toISOString().slice(0, 10),
+    p_payment_method: null,
+    p_note: 'Pago de cuota',
+  })
+  if (error) {
+    if (isDebtAdvancedSchemaError(error)) {
+      throw new Error('Falta ejecutar el SQL actualizado de cuotas de deudas en Supabase.')
+    }
+    throw error
+  }
   notifyDebtsChanged()
 }
 

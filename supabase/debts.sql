@@ -12,11 +12,13 @@ $set_updated_at$;
 
 do $debt_type$
 begin
-  create type public.debt_type as enum ('loan', 'credit_card', 'family', 'store', 'other');
+  create type public.debt_type as enum ('loan', 'credit_card', 'education', 'family', 'store', 'other');
 exception
   when duplicate_object then null;
 end;
 $debt_type$;
+
+alter type public.debt_type add value if not exists 'education';
 
 do $debt_payment_frequency$
 begin
@@ -40,6 +42,7 @@ create table if not exists public.debts (
   name text not null,
   type public.debt_type not null default 'loan',
   creditor text not null,
+  currency text not null default 'DOP' check (currency in ('DOP', 'USD', 'EUR', 'BOB')),
   initial_amount numeric(14, 2) not null check (initial_amount >= 0),
   outstanding_balance numeric(14, 2) not null check (outstanding_balance >= 0),
   start_date date not null default current_date,
@@ -64,6 +67,7 @@ alter table public.debts
   add constraint debts_outstanding_not_above_initial check (outstanding_balance <= initial_amount);
 
 alter table public.debts add column if not exists card_last4 text;
+alter table public.debts add column if not exists currency text not null default 'DOP';
 alter table public.debts add column if not exists credit_limit numeric(14, 2);
 alter table public.debts add column if not exists used_balance numeric(14, 2);
 alter table public.debts add column if not exists statement_balance numeric(14, 2);
@@ -87,6 +91,7 @@ update public.debts
  where credit_card_status in ('current', 'overdue', 'delinquent');
 
 alter table public.debts drop constraint if exists debts_card_last4_check;
+alter table public.debts drop constraint if exists debts_currency_check;
 alter table public.debts drop constraint if exists debts_credit_limit_check;
 alter table public.debts drop constraint if exists debts_used_balance_check;
 alter table public.debts drop constraint if exists debts_statement_balance_check;
@@ -100,6 +105,7 @@ alter table public.debts drop constraint if exists debts_usd_to_dop_rate_check;
 alter table public.debts drop constraint if exists debts_credit_card_status_check;
 alter table public.debts
   add constraint debts_card_last4_check check (card_last4 is null or card_last4 ~ '^[0-9]{4}$'),
+  add constraint debts_currency_check check (currency in ('DOP', 'USD', 'EUR', 'BOB')),
   add constraint debts_credit_limit_check check (credit_limit is null or credit_limit >= 0),
   add constraint debts_used_balance_check check (used_balance is null or used_balance >= 0),
   add constraint debts_statement_balance_check check (statement_balance is null or statement_balance >= 0),
@@ -140,11 +146,29 @@ create table if not exists public.debt_subaccounts (
   unique(user_id, debt_id, name)
 );
 
+create table if not exists public.debt_installments (
+  id uuid primary key default gen_random_uuid(),
+  debt_id uuid not null references public.debts(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  description text not null,
+  amount numeric(14, 2) not null check (amount > 0),
+  due_date date,
+  status text not null default 'pending' check (status in ('pending', 'paid', 'overdue')),
+  paid_at date,
+  debt_payment_id uuid references public.debt_payments(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(user_id, debt_id, description, amount, due_date)
+);
+
 create index if not exists debt_payments_user_id_idx on public.debt_payments(user_id);
 create index if not exists debt_payments_debt_id_idx on public.debt_payments(debt_id);
 create index if not exists debt_payments_user_date_idx on public.debt_payments(user_id, payment_date desc);
 create index if not exists debt_subaccounts_user_id_idx on public.debt_subaccounts(user_id);
 create index if not exists debt_subaccounts_debt_id_idx on public.debt_subaccounts(debt_id);
+create index if not exists debt_installments_user_id_idx on public.debt_installments(user_id);
+create index if not exists debt_installments_debt_id_idx on public.debt_installments(debt_id);
+create index if not exists debt_installments_user_status_idx on public.debt_installments(user_id, status);
 
 alter table public.debt_payments add column if not exists transaction_id uuid;
 alter table public.transactions add column if not exists debt_id uuid;
@@ -195,9 +219,16 @@ before update on public.debt_subaccounts
 for each row
 execute function public.set_updated_at();
 
+drop trigger if exists set_debt_installments_updated_at on public.debt_installments;
+create trigger set_debt_installments_updated_at
+before update on public.debt_installments
+for each row
+execute function public.set_updated_at();
+
 alter table public.debts enable row level security;
 alter table public.debt_payments enable row level security;
 alter table public.debt_subaccounts enable row level security;
+alter table public.debt_installments enable row level security;
 
 grant usage on schema public to anon, authenticated;
 grant usage on type public.debt_type to authenticated;
@@ -206,6 +237,7 @@ grant usage on type public.debt_status to authenticated;
 grant select, insert, update, delete on public.debts to authenticated;
 grant select, insert, update, delete on public.debt_payments to authenticated;
 grant select, insert, update, delete on public.debt_subaccounts to authenticated;
+grant select, insert, update, delete on public.debt_installments to authenticated;
 
 drop policy if exists "Users can read their debts" on public.debts;
 create policy "Users can read their debts"
@@ -283,6 +315,41 @@ create policy "Users can update their debt subaccounts"
 drop policy if exists "Users can delete their debt subaccounts" on public.debt_subaccounts;
 create policy "Users can delete their debt subaccounts"
   on public.debt_subaccounts for delete
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can read their debt installments" on public.debt_installments;
+create policy "Users can read their debt installments"
+  on public.debt_installments for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can create their debt installments" on public.debt_installments;
+create policy "Users can create their debt installments"
+  on public.debt_installments for insert
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.debts
+      where debts.id = debt_id
+        and debts.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "Users can update their debt installments" on public.debt_installments;
+create policy "Users can update their debt installments"
+  on public.debt_installments for update
+  using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.debts
+      where debts.id = debt_id
+        and debts.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "Users can delete their debt installments" on public.debt_installments;
+create policy "Users can delete their debt installments"
+  on public.debt_installments for delete
   using (auth.uid() = user_id);
 
 drop policy if exists "Users can create their transactions" on public.transactions;
@@ -496,6 +563,192 @@ $register_debt_payment$;
 
 grant execute on function public.register_debt_payment(uuid, numeric, date, text, text, boolean, uuid, uuid) to authenticated;
 
+create or replace function public.create_education_debt_seed()
+returns public.debts
+language plpgsql
+security definer
+set search_path = public
+as $create_education_debt_seed$
+declare
+  v_debt public.debts%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'Debes iniciar sesion para crear el plan de cuotas.';
+  end if;
+
+  select *
+    into v_debt
+    from public.debts
+   where user_id = auth.uid()
+     and name = 'Deuda educacion / matricula'
+     and creditor = 'Universidad'
+   order by created_at desc
+   limit 1;
+
+  if not found then
+    insert into public.debts (
+      user_id,
+      name,
+      type,
+      creditor,
+      currency,
+      initial_amount,
+      outstanding_balance,
+      start_date,
+      due_date,
+      payment_frequency,
+      status,
+      notes
+    )
+    values (
+      auth.uid(),
+      'Deuda educacion / matricula',
+      'education',
+      'Universidad',
+      'DOP',
+      173565.67,
+      173565.67,
+      current_date,
+      '2026-07-15',
+      'monthly',
+      'active',
+      'Deuda de matricula con varias cuotas pendientes y un recargo por incumplimiento.'
+    )
+    returning * into v_debt;
+  end if;
+
+  insert into public.debt_installments (debt_id, user_id, description, amount, due_date, status)
+  select v_debt.id, auth.uid(), seed.description, seed.amount, seed.due_date,
+         case when seed.due_date is not null and seed.due_date < current_date then 'overdue' else 'pending' end
+  from (
+    values
+      ('Recargo por incumplimiento cuota no. 1 del acuerdo de pago, correspondiente al semestre 2026-3', 1966.67::numeric, null::date),
+      ('Pago matricula - cuota pendiente', 30866.34::numeric, '2025-02-15'::date),
+      ('Pago matricula - cuota pendiente', 30866.33::numeric, '2025-03-15'::date),
+      ('Pago matricula - cuota pendiente', 30866.33::numeric, '2025-01-15'::date),
+      ('Pago matricula - cuota pendiente', 24750.00::numeric, '2025-10-15'::date),
+      ('Pago matricula - cuota pendiente', 24750.00::numeric, '2025-11-15'::date),
+      ('Pago matricula - cuota pendiente', 9833.33::numeric, '2026-05-15'::date),
+      ('Pago matricula - cuota pendiente', 9833.33::numeric, '2026-06-15'::date),
+      ('Pago matricula - cuota pendiente', 9833.34::numeric, '2026-07-15'::date)
+  ) as seed(description, amount, due_date)
+  where not exists (
+    select 1
+    from public.debt_installments existing
+    where existing.user_id = auth.uid()
+      and existing.debt_id = v_debt.id
+      and existing.description = seed.description
+      and existing.amount = seed.amount
+      and existing.due_date is not distinct from seed.due_date
+  );
+
+  return v_debt;
+end;
+$create_education_debt_seed$;
+
+create or replace function public.pay_debt_installment(
+  p_installment_id uuid,
+  p_payment_date date default current_date,
+  p_payment_method text default null,
+  p_note text default null
+)
+returns public.debt_installments
+language plpgsql
+security definer
+set search_path = public
+as $pay_debt_installment$
+declare
+  v_installment public.debt_installments%rowtype;
+  v_debt public.debts%rowtype;
+  v_payment public.debt_payments%rowtype;
+  v_next_balance numeric(14, 2);
+begin
+  if auth.uid() is null then
+    raise exception 'Debes iniciar sesion para pagar cuotas.';
+  end if;
+
+  if p_payment_method is not null and p_payment_method not in ('cash', 'card', 'transfer', 'other') then
+    raise exception 'Metodo de pago no valido.';
+  end if;
+
+  select *
+    into v_installment
+    from public.debt_installments
+   where id = p_installment_id
+     and user_id = auth.uid()
+   for update;
+
+  if not found then
+    raise exception 'No se encontro la cuota para este usuario.';
+  end if;
+
+  if v_installment.status = 'paid' then
+    raise exception 'Esta cuota ya esta pagada.';
+  end if;
+
+  select *
+    into v_debt
+    from public.debts
+   where id = v_installment.debt_id
+     and user_id = auth.uid()
+   for update;
+
+  if not found then
+    raise exception 'No se encontro la deuda principal.';
+  end if;
+
+  if v_debt.outstanding_balance <= 0 then
+    raise exception 'Esta deuda ya esta pagada.';
+  end if;
+
+  if v_installment.amount > v_debt.outstanding_balance then
+    raise exception 'La cuota no puede ser mayor que el saldo pendiente.';
+  end if;
+
+  v_next_balance := round(v_debt.outstanding_balance - v_installment.amount, 2);
+
+  insert into public.debt_payments (debt_id, user_id, amount, payment_date, payment_method, note)
+  values (
+    v_debt.id,
+    auth.uid(),
+    v_installment.amount,
+    coalesce(p_payment_date, current_date),
+    p_payment_method,
+    coalesce(nullif(trim(p_note), ''), 'Pago de cuota: ' || v_installment.description)
+  )
+  returning * into v_payment;
+
+  update public.debt_installments
+     set status = 'paid',
+         paid_at = coalesce(p_payment_date, current_date),
+         debt_payment_id = v_payment.id
+   where id = v_installment.id
+   returning * into v_installment;
+
+  update public.debts
+     set outstanding_balance = v_next_balance,
+         status = case
+           when v_next_balance = 0
+             or not exists (
+               select 1
+               from public.debt_installments
+               where debt_id = v_debt.id
+                 and user_id = auth.uid()
+                 and status <> 'paid'
+             )
+           then 'paid'::public.debt_status
+           else status
+         end
+   where id = v_debt.id
+     and user_id = auth.uid();
+
+  return v_installment;
+end;
+$pay_debt_installment$;
+
+grant execute on function public.create_education_debt_seed() to authenticated;
+grant execute on function public.pay_debt_installment(uuid, date, text, text) to authenticated;
+
 do $debt_realtime$
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
@@ -527,6 +780,16 @@ begin
         and tablename = 'debt_subaccounts'
     ) then
       alter publication supabase_realtime add table public.debt_subaccounts;
+    end if;
+
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = 'debt_installments'
+    ) then
+      alter publication supabase_realtime add table public.debt_installments;
     end if;
   end if;
 end;

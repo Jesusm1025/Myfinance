@@ -1,6 +1,6 @@
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import type { AccountType, CreditCardDebtStatus, DebtPaymentFrequency, DebtStatus, DebtType, MovementType, PaymentMethod } from '../types/finance'
+import type { AccountType, CreditCardDebtStatus, DebtInstallmentStatus, DebtPaymentFrequency, DebtStatus, DebtType, MovementType, PaymentMethod } from '../types/finance'
 import { formatCurrencyAmount } from './currency'
 
 export function formatMoney(value: number) {
@@ -60,6 +60,7 @@ export function debtTypeLabel(type: DebtType) {
   const labels = {
     loan: 'Prestamo',
     credit_card: 'Tarjeta de credito',
+    education: 'Educacion',
     family: 'Familiar',
     store: 'Tienda',
     other: 'Otro',
@@ -80,6 +81,15 @@ export function debtFrequencyLabel(frequency: DebtPaymentFrequency) {
 export function debtStatusLabel(status: DebtStatus) {
   const labels = {
     active: 'Activa',
+    paid: 'Pagada',
+    overdue: 'Vencida',
+  }
+  return labels[status]
+}
+
+export function debtInstallmentStatusLabel(status: DebtInstallmentStatus) {
+  const labels = {
+    pending: 'Pendiente',
     paid: 'Pagada',
     overdue: 'Vencida',
   }

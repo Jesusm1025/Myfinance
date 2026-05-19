@@ -1,10 +1,12 @@
 export type MovementType = 'income' | 'expense'
 export type PaymentMethod = 'cash' | 'card' | 'transfer' | 'other'
 export type AccountType = 'cash' | 'bank' | 'debit_card' | 'credit_card' | 'savings' | 'other'
-export type DebtType = 'loan' | 'credit_card' | 'family' | 'store' | 'other'
+export type DebtType = 'loan' | 'credit_card' | 'education' | 'family' | 'store' | 'other'
 export type DebtPaymentFrequency = 'once' | 'weekly' | 'biweekly' | 'monthly'
 export type DebtStatus = 'active' | 'paid' | 'overdue'
 export type CreditCardDebtStatus = 'al_dia' | 'vencida' | 'mora' | 'sobregirada'
+export type DebtInstallmentStatus = 'pending' | 'paid' | 'overdue'
+export type DebtCurrencyCode = 'DOP' | 'USD' | 'EUR' | 'BOB'
 
 export type Account = {
   id: string
@@ -134,6 +136,7 @@ export type Debt = {
   name: string
   type: DebtType
   creditor: string
+  currency: DebtCurrencyCode
   initial_amount: number
   outstanding_balance: number
   start_date: string
@@ -191,11 +194,26 @@ export type DebtPayment = {
   created_at: string
 }
 
+export type DebtInstallment = {
+  id: string
+  debt_id: string
+  user_id: string
+  description: string
+  amount: number
+  due_date: string | null
+  status: DebtInstallmentStatus
+  paid_at: string | null
+  debt_payment_id: string | null
+  created_at: string
+  updated_at?: string
+}
+
 export type DebtFormValues = {
   id?: string
   name: string
   type: DebtType
   creditor: string
+  currency: DebtCurrencyCode
   initial_amount: string
   outstanding_balance: string
   start_date: string

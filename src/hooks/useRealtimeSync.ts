@@ -97,6 +97,16 @@ export function useRealtimeSync(userId?: string) {
         },
         () => notifyDebtsChanged(),
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'debt_installments',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => notifyDebtsChanged(),
+      )
       .subscribe((nextStatus, realtimeError) => {
         if (nextStatus === 'SUBSCRIBED') {
           setStatus('connected')
