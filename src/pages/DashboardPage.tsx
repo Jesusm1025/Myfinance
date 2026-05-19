@@ -37,6 +37,7 @@ const emptyFilters: MovementFilters = {
   month: currentMonthValue(),
   type: 'all',
   categoryId: '',
+  accountId: '',
   paymentMethod: 'all',
   from: '',
   to: '',

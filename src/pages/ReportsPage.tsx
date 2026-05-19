@@ -76,6 +76,7 @@ export function ReportsPage() {
       month,
       type: 'all',
       categoryId: '',
+      accountId: '',
       paymentMethod: 'all',
       from: mode === 'range' ? from : '',
       to: mode === 'range' ? to : '',

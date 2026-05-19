@@ -3,6 +3,7 @@ import { AuthProvider } from './auth/AuthProvider'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AppShell } from './components/AppShell'
 import { AuthPage } from './pages/AuthPage'
+import { AccountsPage } from './pages/AccountsPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { MovementsPage } from './pages/MovementsPage'
@@ -31,6 +32,8 @@ function App() {
               <Route path="transactions" element={<MovementsPage />} />
               <Route path="categorias" element={<CategoriesPage />} />
               <Route path="categories" element={<CategoriesPage />} />
+              <Route path="cuentas" element={<AccountsPage />} />
+              <Route path="accounts" element={<AccountsPage />} />
               <Route path="reportes" element={<ReportsPage />} />
               <Route path="reports" element={<ReportsPage />} />
               <Route path="configuracion" element={<SettingsPage />} />

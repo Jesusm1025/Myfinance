@@ -1,16 +1,17 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { BarChart3, FileBarChart, FolderTree, LogOut, Moon, Settings, Sun, WalletCards } from 'lucide-react'
+import { BarChart3, FileBarChart, FolderTree, Landmark, LogOut, Moon, Settings, Sun, WalletCards } from 'lucide-react'
 import { useEffect } from 'react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
 import { useRealtimeSync } from '../hooks/useRealtimeSync'
-import { ensureDefaultCategories } from '../services/accounting'
+import { ensureDefaultAccounts, ensureDefaultCategories } from '../services/accounting'
 import { useTheme } from '../theme/ThemeProvider'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: BarChart3, end: true },
   { to: '/movimientos', label: 'Movimientos', icon: WalletCards, end: false },
   { to: '/categorias', label: 'Categorias', icon: FolderTree, end: false },
+  { to: '/cuentas', label: 'Cuentas', icon: Landmark, end: false },
   { to: '/reportes', label: 'Reportes', icon: FileBarChart, end: false },
   { to: '/configuracion', label: 'Configuracion', icon: Settings, end: false },
 ]
@@ -23,6 +24,7 @@ export function AppShell() {
   useEffect(() => {
     if (!user) return
     void ensureDefaultCategories(user.id, user.email)
+    void ensureDefaultAccounts(user.id).catch(() => undefined)
   }, [user])
 
   return (
@@ -107,7 +109,7 @@ export function AppShell() {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:hidden">
-        <div className="mx-auto grid max-w-lg grid-cols-5 gap-1">
+        <div className="mx-auto grid max-w-xl grid-cols-6 gap-1">
           {navItems.map((item) => (
             <NavLink
               key={item.to}

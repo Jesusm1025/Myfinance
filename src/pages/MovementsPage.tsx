@@ -5,14 +5,15 @@ import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
 import { EmptyState } from '../components/EmptyState'
 import { StatusMessage } from '../components/StatusMessage'
-import { categoriesChangedEvent, movementsChangedEvent } from '../events/financeEvents'
+import { accountsChangedEvent, categoriesChangedEvent, movementsChangedEvent } from '../events/financeEvents'
 import {
   deleteMovement,
+  listAccounts,
   listCategories,
   listMovements,
   saveMovement,
 } from '../services/accounting'
-import type { Category, Movement, MovementFilters, MovementFormValues } from '../types/finance'
+import type { Account, Category, Movement, MovementFilters, MovementFormValues } from '../types/finance'
 import {
   currentMonthValue,
   formatDate,
@@ -30,6 +31,7 @@ const initialMovement: MovementFormValues = {
   type: 'expense',
   amount: '',
   category_id: '',
+  account_id: '',
   description: '',
   date: new Date().toISOString().slice(0, 10),
   payment_method: 'cash',
@@ -39,6 +41,7 @@ const initialFilters: MovementFilters = {
   month: currentMonthValue(),
   type: 'all',
   categoryId: '',
+  accountId: '',
   paymentMethod: 'all',
   from: '',
   to: '',
@@ -48,6 +51,7 @@ export function MovementsPage() {
   const { user } = useAuth()
   const [movements, setMovements] = useState<Movement[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [values, setValues] = useState<MovementFormValues>(initialMovement)
   const [filters, setFilters] = useState<MovementFilters>(initialFilters)
   const [loading, setLoading] = useState(true)
@@ -60,12 +64,14 @@ export function MovementsPage() {
     setLoading(true)
     setError('')
     try {
-      const [movementData, categoryData] = await Promise.all([
+      const [movementData, categoryData, accountData] = await Promise.all([
         listMovements(user.id, filters),
         listCategories(user.id),
+        listAccounts(user.id).catch(() => [] as Account[]),
       ])
       setMovements(movementData)
       setCategories(categoryData)
+      setAccounts(accountData)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar los movimientos.')
     } finally {
@@ -80,9 +86,11 @@ export function MovementsPage() {
   useEffect(() => {
     window.addEventListener(movementsChangedEvent, refresh)
     window.addEventListener(categoriesChangedEvent, refresh)
+    window.addEventListener(accountsChangedEvent, refresh)
     return () => {
       window.removeEventListener(movementsChangedEvent, refresh)
       window.removeEventListener(categoriesChangedEvent, refresh)
+      window.removeEventListener(accountsChangedEvent, refresh)
     }
   }, [refresh])
 
@@ -119,6 +127,9 @@ export function MovementsPage() {
       if (!values.category_id) {
         throw new Error('La categoria es obligatoria.')
       }
+      if (!values.account_id) {
+        throw new Error('La cuenta es obligatoria.')
+      }
       if (!values.date) {
         throw new Error('La fecha es obligatoria.')
       }
@@ -153,6 +164,7 @@ export function MovementsPage() {
       type: movement.type,
       amount: String(movement.amount),
       category_id: movement.category_id ?? '',
+      account_id: movement.account_id ?? '',
       description: movement.description ?? '',
       date: movement.date,
       payment_method: movement.payment_method,
@@ -239,6 +251,23 @@ export function MovementsPage() {
           </label>
 
           <label className="block">
+            <span className={labelClass}>Cuenta</span>
+            <select
+              required
+              value={values.account_id}
+              onChange={(event) => setValues((current) => ({ ...current, account_id: event.target.value }))}
+              className={`mt-1 ${fieldClass}`}
+            >
+              <option value="">Selecciona una cuenta</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
             <span className={labelClass}>Metodo de pago</span>
             <select
               value={values.payment_method}
@@ -302,7 +331,7 @@ export function MovementsPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <input
               type="month"
               value={filters.month}
@@ -335,6 +364,19 @@ export function MovementsPage() {
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={filters.accountId}
+              onChange={(event) => setFilters((current) => ({ ...current, accountId: event.target.value }))}
+              className={fieldClass}
+              aria-label="Filtrar por cuenta"
+            >
+              <option value="">Cuentas</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
                 </option>
               ))}
             </select>
@@ -404,6 +446,7 @@ export function MovementsPage() {
                         </div>
                         <p className="mt-1 text-sm text-muted dark:text-slate-400">
                           {formatDate(movement.date)} - {movement.category?.name ?? 'Sin categoria'} -{' '}
+                          {movement.account?.name ?? 'Sin cuenta'} -{' '}
                           {paymentMethodLabel(movement.payment_method)}
                         </p>
                       </div>
@@ -449,6 +492,7 @@ export function MovementsPage() {
                     <tr>
                       <th className="px-4 py-3">Movimiento</th>
                       <th className="px-4 py-3">Categoria</th>
+                      <th className="px-4 py-3">Cuenta</th>
                       <th className="px-4 py-3">Fecha</th>
                       <th className="px-4 py-3">Metodo</th>
                       <th className="px-4 py-3 text-right">Monto</th>
@@ -476,6 +520,9 @@ export function MovementsPage() {
                         </td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                           {movement.category?.name ?? 'Sin categoria'}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                          {movement.account?.name ?? 'Sin cuenta'}
                         </td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDate(movement.date)}</td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">

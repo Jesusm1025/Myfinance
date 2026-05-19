@@ -1,6 +1,6 @@
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import type { MovementType, PaymentMethod } from '../types/finance'
+import type { AccountType, MovementType, PaymentMethod } from '../types/finance'
 
 export const moneyFormatter = new Intl.NumberFormat('es-BO', {
   style: 'currency',
@@ -47,4 +47,16 @@ export function paymentMethodLabel(method: PaymentMethod) {
     other: 'Otro',
   }
   return labels[method]
+}
+
+export function accountTypeLabel(type: AccountType) {
+  const labels = {
+    cash: 'Efectivo',
+    bank: 'Cuenta bancaria',
+    debit_card: 'Tarjeta de debito',
+    credit_card: 'Tarjeta de credito',
+    savings: 'Ahorros',
+    other: 'Otro',
+  }
+  return labels[type]
 }
