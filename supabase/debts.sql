@@ -67,20 +67,50 @@ alter table public.debts add column if not exists card_last4 text;
 alter table public.debts add column if not exists credit_limit numeric(14, 2);
 alter table public.debts add column if not exists used_balance numeric(14, 2);
 alter table public.debts add column if not exists statement_balance numeric(14, 2);
+alter table public.debts add column if not exists balance_dop numeric(14, 2);
+alter table public.debts add column if not exists balance_usd numeric(14, 2);
+alter table public.debts add column if not exists minimum_payment_dop numeric(14, 2);
+alter table public.debts add column if not exists minimum_payment_usd numeric(14, 2);
+alter table public.debts add column if not exists credit_limit_dop numeric(14, 2);
+alter table public.debts add column if not exists credit_limit_usd numeric(14, 2);
+alter table public.debts add column if not exists usd_to_dop_rate numeric(14, 4);
 alter table public.debts add column if not exists statement_date date;
 alter table public.debts add column if not exists credit_card_status text;
+
+update public.debts
+   set credit_card_status = case credit_card_status
+     when 'current' then 'al_dia'
+     when 'overdue' then 'vencida'
+     when 'delinquent' then 'mora'
+     else credit_card_status
+   end
+ where credit_card_status in ('current', 'overdue', 'delinquent');
 
 alter table public.debts drop constraint if exists debts_card_last4_check;
 alter table public.debts drop constraint if exists debts_credit_limit_check;
 alter table public.debts drop constraint if exists debts_used_balance_check;
 alter table public.debts drop constraint if exists debts_statement_balance_check;
+alter table public.debts drop constraint if exists debts_balance_dop_check;
+alter table public.debts drop constraint if exists debts_balance_usd_check;
+alter table public.debts drop constraint if exists debts_minimum_payment_dop_check;
+alter table public.debts drop constraint if exists debts_minimum_payment_usd_check;
+alter table public.debts drop constraint if exists debts_credit_limit_dop_check;
+alter table public.debts drop constraint if exists debts_credit_limit_usd_check;
+alter table public.debts drop constraint if exists debts_usd_to_dop_rate_check;
 alter table public.debts drop constraint if exists debts_credit_card_status_check;
 alter table public.debts
   add constraint debts_card_last4_check check (card_last4 is null or card_last4 ~ '^[0-9]{4}$'),
   add constraint debts_credit_limit_check check (credit_limit is null or credit_limit >= 0),
   add constraint debts_used_balance_check check (used_balance is null or used_balance >= 0),
   add constraint debts_statement_balance_check check (statement_balance is null or statement_balance >= 0),
-  add constraint debts_credit_card_status_check check (credit_card_status is null or credit_card_status in ('current', 'overdue', 'delinquent'));
+  add constraint debts_balance_dop_check check (balance_dop is null or balance_dop >= 0),
+  add constraint debts_balance_usd_check check (balance_usd is null or balance_usd >= 0),
+  add constraint debts_minimum_payment_dop_check check (minimum_payment_dop is null or minimum_payment_dop >= 0),
+  add constraint debts_minimum_payment_usd_check check (minimum_payment_usd is null or minimum_payment_usd >= 0),
+  add constraint debts_credit_limit_dop_check check (credit_limit_dop is null or credit_limit_dop >= 0),
+  add constraint debts_credit_limit_usd_check check (credit_limit_usd is null or credit_limit_usd >= 0),
+  add constraint debts_usd_to_dop_rate_check check (usd_to_dop_rate is null or usd_to_dop_rate > 0),
+  add constraint debts_credit_card_status_check check (credit_card_status is null or credit_card_status in ('al_dia', 'vencida', 'mora', 'sobregirada'));
 
 create index if not exists debts_user_id_idx on public.debts(user_id);
 create index if not exists debts_user_status_idx on public.debts(user_id, status);
@@ -97,9 +127,24 @@ create table if not exists public.debt_payments (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.debt_subaccounts (
+  id uuid primary key default gen_random_uuid(),
+  debt_id uuid not null references public.debts(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  balance numeric(14, 2) not null default 0 check (balance >= 0),
+  credit_limit numeric(14, 2) not null default 0 check (credit_limit >= 0),
+  available numeric(14, 2) generated always as (credit_limit - balance) stored,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(user_id, debt_id, name)
+);
+
 create index if not exists debt_payments_user_id_idx on public.debt_payments(user_id);
 create index if not exists debt_payments_debt_id_idx on public.debt_payments(debt_id);
 create index if not exists debt_payments_user_date_idx on public.debt_payments(user_id, payment_date desc);
+create index if not exists debt_subaccounts_user_id_idx on public.debt_subaccounts(user_id);
+create index if not exists debt_subaccounts_debt_id_idx on public.debt_subaccounts(debt_id);
 
 alter table public.debt_payments add column if not exists transaction_id uuid;
 alter table public.transactions add column if not exists debt_id uuid;
@@ -144,8 +189,15 @@ before update on public.debts
 for each row
 execute function public.set_updated_at();
 
+drop trigger if exists set_debt_subaccounts_updated_at on public.debt_subaccounts;
+create trigger set_debt_subaccounts_updated_at
+before update on public.debt_subaccounts
+for each row
+execute function public.set_updated_at();
+
 alter table public.debts enable row level security;
 alter table public.debt_payments enable row level security;
+alter table public.debt_subaccounts enable row level security;
 
 grant usage on schema public to anon, authenticated;
 grant usage on type public.debt_type to authenticated;
@@ -153,6 +205,7 @@ grant usage on type public.debt_payment_frequency to authenticated;
 grant usage on type public.debt_status to authenticated;
 grant select, insert, update, delete on public.debts to authenticated;
 grant select, insert, update, delete on public.debt_payments to authenticated;
+grant select, insert, update, delete on public.debt_subaccounts to authenticated;
 
 drop policy if exists "Users can read their debts" on public.debts;
 create policy "Users can read their debts"
@@ -195,6 +248,41 @@ create policy "Users can create their debt payments"
 drop policy if exists "Users can delete their debt payments" on public.debt_payments;
 create policy "Users can delete their debt payments"
   on public.debt_payments for delete
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can read their debt subaccounts" on public.debt_subaccounts;
+create policy "Users can read their debt subaccounts"
+  on public.debt_subaccounts for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can create their debt subaccounts" on public.debt_subaccounts;
+create policy "Users can create their debt subaccounts"
+  on public.debt_subaccounts for insert
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.debts
+      where debts.id = debt_id
+        and debts.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "Users can update their debt subaccounts" on public.debt_subaccounts;
+create policy "Users can update their debt subaccounts"
+  on public.debt_subaccounts for update
+  using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.debts
+      where debts.id = debt_id
+        and debts.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "Users can delete their debt subaccounts" on public.debt_subaccounts;
+create policy "Users can delete their debt subaccounts"
+  on public.debt_subaccounts for delete
   using (auth.uid() = user_id);
 
 drop policy if exists "Users can create their transactions" on public.transactions;
@@ -429,6 +517,16 @@ begin
         and tablename = 'debt_payments'
     ) then
       alter publication supabase_realtime add table public.debt_payments;
+    end if;
+
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = 'debt_subaccounts'
+    ) then
+      alter publication supabase_realtime add table public.debt_subaccounts;
     end if;
   end if;
 end;

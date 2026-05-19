@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { AlertTriangle, CalendarClock, CheckCircle2, CircleDollarSign, ClipboardList, Edit2, History, LoaderCircle, Plus, Save, ShieldCheck, TrendingUp, Trash2, WalletCards, X } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CheckCircle2, CircleDollarSign, ClipboardList, CreditCard, Edit2, History, LoaderCircle, Plus, Save, ShieldCheck, TrendingUp, Trash2, WalletCards, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { EmptyState } from '../components/EmptyState'
 import { StatCard } from '../components/StatCard'
 import { StatusMessage } from '../components/StatusMessage'
 import { debtsChangedEvent } from '../events/financeEvents'
-import { deleteDebt, listAccounts, listDebtPayments, listDebts, registerDebtPayment, saveDebt } from '../services/accounting'
-import type { Account, Debt, DebtFormValues, DebtPayment, DebtPaymentFormValues, DebtStatus } from '../types/finance'
+import { deleteDebt, listAccounts, listDebtPayments, listDebts, listDebtSubaccounts, registerDebtPayment, saveDebt } from '../services/accounting'
+import type { Account, Debt, DebtFormValues, DebtPayment, DebtPaymentFormValues, DebtStatus, DebtSubaccount, DebtSubaccountFormValues } from '../types/finance'
 import {
   creditCardDebtStatusLabel,
   debtFrequencyLabel,
@@ -23,6 +23,13 @@ const fieldClass =
 
 const labelClass = 'text-sm font-medium text-slate-700 dark:text-slate-300'
 
+const defaultCardSubaccounts: DebtSubaccountFormValues[] = [
+  { name: 'Credimas', balance: '', credit_limit: '' },
+  { name: 'Avances', balance: '', credit_limit: '' },
+  { name: 'Cuotas', balance: '', credit_limit: '' },
+  { name: 'Financiamientos', balance: '', credit_limit: '' },
+]
+
 const initialDebt: DebtFormValues = {
   name: '',
   type: 'loan',
@@ -37,8 +44,16 @@ const initialDebt: DebtFormValues = {
   credit_limit: '',
   used_balance: '',
   statement_balance: '',
+  balance_dop: '',
+  balance_usd: '',
+  minimum_payment_dop: '',
+  minimum_payment_usd: '',
+  credit_limit_dop: '',
+  credit_limit_usd: '',
+  usd_to_dop_rate: '',
   statement_date: '',
   credit_card_status: '',
+  subaccounts: defaultCardSubaccounts,
   payment_frequency: 'monthly',
   status: 'active',
   notes: '',
@@ -64,6 +79,7 @@ export function DebtsPage() {
   const { user } = useAuth()
   const [debts, setDebts] = useState<Debt[]>([])
   const [payments, setPayments] = useState<DebtPayment[]>([])
+  const [subaccounts, setSubaccounts] = useState<DebtSubaccount[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [values, setValues] = useState<DebtFormValues>(initialDebt)
   const [paymentValues, setPaymentValues] = useState<Record<string, DebtPaymentFormValues>>({})
@@ -82,13 +98,16 @@ export function DebtsPage() {
     setLoading(true)
     setError('')
     try {
-      const [debtData, paymentData] = await Promise.all([
+      const [debtData, paymentData, subaccountData, accountData] = await Promise.all([
         listDebts(user.id),
         listDebtPayments(user.id).catch(() => [] as DebtPayment[]),
+        listDebtSubaccounts(user.id).catch(() => [] as DebtSubaccount[]),
+        listAccounts(user.id).catch(() => [] as Account[]),
       ])
       setDebts(debtData)
       setPayments(paymentData)
-      setAccounts(await listAccounts(user.id).catch(() => [] as Account[]))
+      setSubaccounts(subaccountData)
+      setAccounts(accountData)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'No se pudieron cargar las deudas.')
     } finally {
@@ -171,6 +190,16 @@ export function DebtsPage() {
     return rows
   }, [payments])
 
+  const subaccountsByDebt = useMemo(() => {
+    const rows = new Map<string, DebtSubaccount[]>()
+    subaccounts.forEach((subaccount) => {
+      const current = rows.get(subaccount.debt_id) ?? []
+      current.push(subaccount)
+      rows.set(subaccount.debt_id, current)
+    })
+    return rows
+  }, [subaccounts])
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!user) return
@@ -208,6 +237,12 @@ export function DebtsPage() {
           ['limite de credito', values.credit_limit],
           ['balance usado', values.used_balance],
           ['pendiente del ultimo corte', values.statement_balance],
+          ['balance DOP', values.balance_dop],
+          ['balance USD', values.balance_usd],
+          ['pago minimo DOP', values.minimum_payment_dop],
+          ['pago minimo USD', values.minimum_payment_usd],
+          ['limite DOP', values.credit_limit_dop],
+          ['limite USD', values.credit_limit_usd],
         ] as const) {
           if (rawValue.trim()) {
             const numericValue = Number(rawValue)
@@ -216,6 +251,28 @@ export function DebtsPage() {
             }
           }
         }
+        if (values.usd_to_dop_rate.trim()) {
+          const rate = Number(values.usd_to_dop_rate)
+          if (!Number.isFinite(rate) || rate <= 0) {
+            throw new Error('La tasa USD a DOP debe ser mayor que 0.')
+          }
+        }
+        values.subaccounts.forEach((subaccount) => {
+          const hasData = subaccount.name.trim() || subaccount.balance.trim() || subaccount.credit_limit.trim()
+          if (!hasData) return
+          if (!subaccount.name.trim()) {
+            throw new Error('Cada subcuenta debe tener un nombre.')
+          }
+          for (const [label, rawValue] of [
+            [`balance de ${subaccount.name}`, subaccount.balance],
+            [`limite de ${subaccount.name}`, subaccount.credit_limit],
+          ] as const) {
+            const numericValue = rawValue.trim() ? Number(rawValue) : 0
+            if (!Number.isFinite(numericValue) || numericValue < 0) {
+              throw new Error(`El ${label} debe ser mayor o igual a 0.`)
+            }
+          }
+        })
       }
 
       await saveDebt(user.id, values)
@@ -238,7 +295,7 @@ export function DebtsPage() {
   }
 
   function startEdit(debt: Debt) {
-    setValues(debtToFormValues(debt))
+    setValues(debtToFormValues(debt, subaccountsByDebt.get(debt.id) ?? []))
     setShowForm(true)
     setError('')
     setSuccess('')
@@ -266,7 +323,7 @@ export function DebtsPage() {
 
     try {
       await saveDebt(user.id, {
-        ...debtToFormValues(debt),
+        ...debtToFormValues(debt, subaccountsByDebt.get(debt.id) ?? []),
         outstanding_balance: '0',
         status: 'paid',
       })
@@ -605,7 +662,7 @@ export function DebtsPage() {
                 <div>
                   <h4 className="font-semibold text-ink dark:text-white">Datos de tarjeta de credito</h4>
                   <p className="mt-1 text-sm text-muted dark:text-slate-400">
-                    Estos campos ayudan a dar seguimiento al corte, limite y estado especial de la tarjeta.
+                    Registra balances en DOP y USD, limites, corte, estado especial y subcuentas del producto.
                   </p>
                 </div>
 
@@ -626,7 +683,98 @@ export function DebtsPage() {
                   </label>
 
                   <label className="block">
-                    <span className={labelClass}>Limite de credito</span>
+                    <span className={labelClass}>Balance DOP</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={values.balance_dop}
+                      onChange={(event) => setValues((current) => ({ ...current, balance_dop: event.target.value }))}
+                      className={`mt-1 ${fieldClass}`}
+                      placeholder="35736.82"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className={labelClass}>Balance USD</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={values.balance_usd}
+                      onChange={(event) => setValues((current) => ({ ...current, balance_usd: event.target.value }))}
+                      className={`mt-1 ${fieldClass}`}
+                      placeholder="0.00"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className={labelClass}>Limite DOP</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={values.credit_limit_dop}
+                      onChange={(event) => setValues((current) => ({ ...current, credit_limit_dop: event.target.value }))}
+                      className={`mt-1 ${fieldClass}`}
+                      placeholder="26000.00"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className={labelClass}>Limite USD</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={values.credit_limit_usd}
+                      onChange={(event) => setValues((current) => ({ ...current, credit_limit_usd: event.target.value }))}
+                      className={`mt-1 ${fieldClass}`}
+                      placeholder="0.00"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className={labelClass}>Pago minimo DOP</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={values.minimum_payment_dop}
+                      onChange={(event) => setValues((current) => ({ ...current, minimum_payment_dop: event.target.value }))}
+                      className={`mt-1 ${fieldClass}`}
+                      placeholder="12054.60"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className={labelClass}>Pago minimo USD</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={values.minimum_payment_usd}
+                      onChange={(event) => setValues((current) => ({ ...current, minimum_payment_usd: event.target.value }))}
+                      className={`mt-1 ${fieldClass}`}
+                      placeholder="0.00"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className={labelClass}>Tasa USD a DOP</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      value={values.usd_to_dop_rate}
+                      onChange={(event) => setValues((current) => ({ ...current, usd_to_dop_rate: event.target.value }))}
+                      className={`mt-1 ${fieldClass}`}
+                      placeholder="59.00"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className={labelClass}>Limite de credito principal</span>
                     <input
                       type="number"
                       min="0"
@@ -639,7 +787,7 @@ export function DebtsPage() {
                   </label>
 
                   <label className="block">
-                    <span className={labelClass}>Balance usado</span>
+                    <span className={labelClass}>Balance usado principal</span>
                     <input
                       type="number"
                       min="0"
@@ -652,7 +800,7 @@ export function DebtsPage() {
                   </label>
 
                   <label className="block">
-                    <span className={labelClass}>Pendiente ultimo corte</span>
+                    <span className={labelClass}>Pendiente ultimo corte principal</span>
                     <input
                       type="number"
                       min="0"
@@ -687,11 +835,116 @@ export function DebtsPage() {
                       className={`mt-1 ${fieldClass}`}
                     >
                       <option value="">Sin estado</option>
-                      <option value="current">Al dia</option>
-                      <option value="overdue">Vencida</option>
-                      <option value="delinquent">En mora</option>
+                      <option value="al_dia">Al dia</option>
+                      <option value="vencida">Vencida</option>
+                      <option value="mora">En mora</option>
+                      <option value="sobregirada">Sobregirada</option>
                     </select>
                   </label>
+
+                  <div className="md:col-span-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h5 className="text-sm font-semibold text-ink dark:text-white">Subcuentas</h5>
+                        <p className="text-xs text-muted dark:text-slate-400">
+                          Componentes relacionados como Credimas, avances, cuotas o financiamientos.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setValues((current) => ({
+                            ...current,
+                            subaccounts: [...current.subaccounts, { name: '', balance: '', credit_limit: '' }],
+                          }))
+                        }
+                        className="rounded-lg border border-line px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        Agregar
+                      </button>
+                    </div>
+                    <div className="mt-3 space-y-3">
+                      {values.subaccounts.map((subaccount, index) => {
+                        const balance = Number(subaccount.balance || 0)
+                        const limit = Number(subaccount.credit_limit || 0)
+                        const available = limit - balance
+                        return (
+                          <div key={`${subaccount.name}-${index}`} className="grid gap-3 rounded-lg border border-line bg-white p-3 dark:border-slate-800 dark:bg-slate-900 md:grid-cols-[1.2fr_1fr_1fr_auto]">
+                            <label className="block">
+                              <span className={labelClass}>Nombre</span>
+                              <input
+                                type="text"
+                                value={subaccount.name}
+                                onChange={(event) =>
+                                  setValues((current) => ({
+                                    ...current,
+                                    subaccounts: current.subaccounts.map((item, itemIndex) =>
+                                      itemIndex === index ? { ...item, name: event.target.value } : item,
+                                    ),
+                                  }))
+                                }
+                                className={`mt-1 ${fieldClass}`}
+                                placeholder="Credimas"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className={labelClass}>Balance</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={subaccount.balance}
+                                onChange={(event) =>
+                                  setValues((current) => ({
+                                    ...current,
+                                    subaccounts: current.subaccounts.map((item, itemIndex) =>
+                                      itemIndex === index ? { ...item, balance: event.target.value } : item,
+                                    ),
+                                  }))
+                                }
+                                className={`mt-1 ${fieldClass}`}
+                                placeholder="0.00"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className={labelClass}>Limite</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={subaccount.credit_limit}
+                                onChange={(event) =>
+                                  setValues((current) => ({
+                                    ...current,
+                                    subaccounts: current.subaccounts.map((item, itemIndex) =>
+                                      itemIndex === index ? { ...item, credit_limit: event.target.value } : item,
+                                    ),
+                                  }))
+                                }
+                                className={`mt-1 ${fieldClass}`}
+                                placeholder="0.00"
+                              />
+                              <span className={`mt-1 block text-xs font-medium ${available < 0 ? 'text-coral-600 dark:text-coral-400' : 'text-muted dark:text-slate-400'}`}>
+                                Disponible: {Number.isFinite(available) ? formatMoney(available) : formatMoney(0)}
+                              </span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setValues((current) => ({
+                                  ...current,
+                                  subaccounts: current.subaccounts.filter((_, itemIndex) => itemIndex !== index),
+                                }))
+                              }
+                              className="self-end rounded-lg border border-coral-500/30 px-3 py-2 text-sm font-semibold text-coral-600 hover:bg-coral-50 dark:border-coral-500/30 dark:text-coral-400 dark:hover:bg-coral-500/10"
+                            >
+                              Quitar
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
                 </div>
               </section>
             ) : null}
@@ -816,44 +1069,7 @@ export function DebtsPage() {
                 </dl>
 
                 {debt.type === 'credit_card' ? (
-                  <section className="mt-4 rounded-lg border border-line bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h4 className="font-semibold text-ink dark:text-white">
-                          Tarjeta de credito{debt.card_last4 ? ` - ${debt.card_last4}` : ''}
-                        </h4>
-                        <p className="text-sm text-muted dark:text-slate-400">
-                          Estado especial: {creditCardDebtStatusLabel(debt.credit_card_status)}
-                        </p>
-                      </div>
-                      <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${creditCardStatusTone(debt.credit_card_status)}`}>
-                        {creditCardDebtStatusLabel(debt.credit_card_status)}
-                      </span>
-                    </div>
-                    <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-                      <DebtMetric label="Limite de credito" value={debt.credit_limit === null ? 'Sin limite' : formatMoney(Number(debt.credit_limit))} />
-                      <DebtMetric label="Balance usado" value={debt.used_balance === null ? 'Sin dato' : formatMoney(Number(debt.used_balance))} />
-                      <DebtMetric label="Pendiente ultimo corte" value={debt.statement_balance === null ? 'Sin dato' : formatMoney(Number(debt.statement_balance))} />
-                      <DebtMetric label="Pago minimo" value={debt.minimum_payment === null ? 'Sin dato' : formatMoney(Number(debt.minimum_payment))} />
-                      <DebtMetric label="Fecha de corte" value={debt.statement_date ? formatDate(debt.statement_date) : 'Sin fecha'} />
-                      <DebtMetric label="Fecha limite pago" value={debt.due_date ? formatDate(debt.due_date) : 'Sin fecha'} />
-                      <DebtMetric label="Tasa de interes" value={debt.interest_rate === null ? 'Sin dato' : `${Number(debt.interest_rate)}%`} />
-                    </dl>
-                    {debt.credit_limit !== null && Number(debt.credit_limit) > 0 && debt.used_balance !== null ? (
-                      <div className="mt-4">
-                        <div className="flex items-center justify-between text-xs text-muted dark:text-slate-400">
-                          <span>Uso del limite</span>
-                          <span>{Math.round((Number(debt.used_balance) / Number(debt.credit_limit)) * 100)}%</span>
-                        </div>
-                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-                          <div
-                            className="h-full rounded-full bg-coral-500"
-                            style={{ width: `${Math.min(100, Math.round((Number(debt.used_balance) / Number(debt.credit_limit)) * 100))}%` }}
-                          />
-                        </div>
-                      </div>
-                    ) : null}
-                  </section>
+                  <CreditCardDebtDetails debt={debt} subaccounts={subaccountsByDebt.get(debt.id) ?? []} />
                 ) : null}
 
                 <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
@@ -1116,7 +1332,7 @@ export function DebtsPage() {
   )
 }
 
-function debtToFormValues(debt: Debt): DebtFormValues {
+function debtToFormValues(debt: Debt, subaccounts: DebtSubaccount[] = []): DebtFormValues {
   return {
     id: debt.id,
     name: debt.name,
@@ -1126,14 +1342,29 @@ function debtToFormValues(debt: Debt): DebtFormValues {
     outstanding_balance: String(debt.outstanding_balance),
     start_date: debt.start_date,
     due_date: debt.due_date ?? '',
-    interest_rate: debt.interest_rate === null ? '' : String(debt.interest_rate),
-    minimum_payment: debt.minimum_payment === null ? '' : String(debt.minimum_payment),
+    interest_rate: debt.interest_rate == null ? '' : String(debt.interest_rate),
+    minimum_payment: debt.minimum_payment == null ? '' : String(debt.minimum_payment),
     card_last4: debt.card_last4 ?? '',
-    credit_limit: debt.credit_limit === null ? '' : String(debt.credit_limit),
-    used_balance: debt.used_balance === null ? '' : String(debt.used_balance),
-    statement_balance: debt.statement_balance === null ? '' : String(debt.statement_balance),
+    credit_limit: debt.credit_limit == null ? '' : String(debt.credit_limit),
+    used_balance: debt.used_balance == null ? '' : String(debt.used_balance),
+    statement_balance: debt.statement_balance == null ? '' : String(debt.statement_balance),
+    balance_dop: debt.balance_dop == null ? '' : String(debt.balance_dop),
+    balance_usd: debt.balance_usd == null ? '' : String(debt.balance_usd),
+    minimum_payment_dop: debt.minimum_payment_dop == null ? '' : String(debt.minimum_payment_dop),
+    minimum_payment_usd: debt.minimum_payment_usd == null ? '' : String(debt.minimum_payment_usd),
+    credit_limit_dop: debt.credit_limit_dop == null ? '' : String(debt.credit_limit_dop),
+    credit_limit_usd: debt.credit_limit_usd == null ? '' : String(debt.credit_limit_usd),
+    usd_to_dop_rate: debt.usd_to_dop_rate == null ? '' : String(debt.usd_to_dop_rate),
     statement_date: debt.statement_date ?? '',
     credit_card_status: debt.credit_card_status ?? '',
+    subaccounts: subaccounts.length
+      ? subaccounts.map((subaccount) => ({
+          id: subaccount.id,
+          name: subaccount.name,
+          balance: String(subaccount.balance),
+          credit_limit: String(subaccount.credit_limit),
+        }))
+      : defaultCardSubaccounts,
     payment_frequency: debt.payment_frequency,
     status: debt.status,
     notes: debt.notes ?? '',
@@ -1193,9 +1424,146 @@ function priorityTone(priority: DebtPriority) {
 }
 
 function creditCardStatusTone(status: Debt['credit_card_status']) {
-  if (status === 'delinquent') return 'bg-coral-50 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400'
-  if (status === 'overdue') return 'bg-gold-50 text-gold-600 dark:bg-gold-500/15 dark:text-gold-400'
+  if (status === 'mora' || status === 'sobregirada') return 'bg-coral-50 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400'
+  if (status === 'vencida') return 'bg-gold-50 text-gold-600 dark:bg-gold-500/15 dark:text-gold-400'
   return 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100'
+}
+
+const dopFormatter = new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' })
+const usdFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+
+function formatDop(value: number) {
+  return dopFormatter.format(value)
+}
+
+function formatUsd(value: number) {
+  return usdFormatter.format(value)
+}
+
+function toNumber(value: number | null | undefined) {
+  return value === null || value === undefined ? 0 : Number(value)
+}
+
+function CreditCardDebtDetails({ debt, subaccounts }: { debt: Debt; subaccounts: DebtSubaccount[] }) {
+  const dopBalance = toNumber(debt.balance_dop ?? debt.used_balance ?? debt.outstanding_balance)
+  const usdBalance = toNumber(debt.balance_usd)
+  const dopLimit = toNumber(debt.credit_limit_dop ?? debt.credit_limit)
+  const usdLimit = toNumber(debt.credit_limit_usd)
+  const dopMinimum = toNumber(debt.minimum_payment_dop ?? debt.minimum_payment)
+  const usdMinimum = toNumber(debt.minimum_payment_usd)
+  const rate = toNumber(debt.usd_to_dop_rate)
+  const dopAvailable = dopLimit - dopBalance
+  const usdAvailable = usdLimit - usdBalance
+  const usdConverted = rate > 0 ? usdBalance * rate : null
+  const totalConsolidated = dopBalance + (usdConverted ?? 0)
+  const minimumTotal = dopMinimum + (rate > 0 ? usdMinimum * rate : 0)
+  const utilization = dopLimit + (rate > 0 ? usdLimit * rate : 0) > 0
+    ? Math.round((totalConsolidated / (dopLimit + (rate > 0 ? usdLimit * rate : 0))) * 100)
+    : null
+  const hasOverLimit = dopAvailable < 0 || usdAvailable < 0 || debt.credit_card_status === 'sobregirada'
+
+  return (
+    <section className="mt-4 overflow-hidden rounded-lg border border-line bg-white dark:border-slate-800 dark:bg-slate-950">
+      <div className={`p-4 ${hasOverLimit ? 'bg-coral-50 dark:bg-coral-500/10' : 'bg-brand-50 dark:bg-brand-500/10'}`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`rounded-lg p-2 ${hasOverLimit ? 'bg-coral-100 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400' : 'bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100'}`}>
+              <CreditCard className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-ink dark:text-white">
+                Tarjeta de credito{debt.card_last4 ? ` - ${debt.card_last4}` : ''}
+              </h4>
+              <p className="text-sm text-muted dark:text-slate-400">
+                Corte {debt.statement_date ? formatDate(debt.statement_date) : 'sin fecha'} - Pago limite {debt.due_date ? formatDate(debt.due_date) : 'sin fecha'}
+              </p>
+            </div>
+          </div>
+          <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${creditCardStatusTone(debt.credit_card_status)}`}>
+            {creditCardDebtStatusLabel(debt.credit_card_status)}
+          </span>
+        </div>
+
+        <div className="mt-4">
+          <div className="flex items-center justify-between text-xs font-medium text-muted dark:text-slate-400">
+            <span>Utilizacion consolidada</span>
+            <span>{utilization === null ? 'Sin limite' : `${utilization}%`}</span>
+          </div>
+          <div className="mt-2 h-3 overflow-hidden rounded-full bg-white/80 dark:bg-slate-800">
+            <div
+              className={`h-full rounded-full transition-all ${hasOverLimit ? 'bg-coral-500' : utilization !== null && utilization >= 80 ? 'bg-gold-500' : 'bg-brand-600'}`}
+              style={{ width: `${Math.min(100, utilization ?? 0)}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {hasOverLimit ? (
+        <div className="border-t border-coral-200 bg-coral-50 px-4 py-3 text-sm font-medium text-coral-700 dark:border-coral-500/20 dark:bg-coral-500/10 dark:text-coral-300">
+          Esta tarjeta supera el limite disponible. Revisa el balance, pagos vencidos o posibles cargos por mora.
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+        <DebtMetric label="Deuda consolidada" value={formatDop(totalConsolidated)} />
+        <DebtMetric label="USD convertido" value={usdConverted === null ? 'Agrega tasa USD' : formatDop(usdConverted)} />
+        <DebtMetric label="Pago minimo total" value={formatDop(minimumTotal)} />
+        <DebtMetric label="Tasa USD a DOP" value={rate > 0 ? String(rate) : 'Sin tasa'} />
+        <DebtMetric label="Balance DOP" value={formatDop(dopBalance)} />
+        <DebtMetric label="Disponible DOP" value={formatDop(dopAvailable)} />
+        <DebtMetric label="Balance USD" value={formatUsd(usdBalance)} />
+        <DebtMetric label="Disponible USD" value={formatUsd(usdAvailable)} />
+        <DebtMetric label="Pendiente ultimo corte" value={debt.statement_balance == null ? 'Sin dato' : formatMoney(Number(debt.statement_balance))} />
+        <DebtMetric label="Tasa de interes" value={debt.interest_rate == null ? 'Sin dato' : `${Number(debt.interest_rate)}%`} />
+      </div>
+
+      <div className="border-t border-line p-4 dark:border-slate-800">
+        <h5 className="text-sm font-semibold text-ink dark:text-white">Subcuentas relacionadas</h5>
+        {subaccounts.length ? (
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {subaccounts.map((subaccount) => {
+              const limit = Number(subaccount.credit_limit)
+              const balance = Number(subaccount.balance)
+              const available = Number(subaccount.available)
+              const usage = limit > 0 ? Math.round((balance / limit) * 100) : null
+              const overLimit = available < 0
+              return (
+                <div key={subaccount.id} className="rounded-lg border border-line p-3 dark:border-slate-800">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-ink dark:text-white">{subaccount.name}</p>
+                      <p className={`text-xs font-medium ${overLimit ? 'text-coral-600 dark:text-coral-400' : 'text-muted dark:text-slate-400'}`}>
+                        Disponible {formatMoney(available)}
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${overLimit ? 'bg-coral-50 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400' : 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100'}`}>
+                      {usage === null ? 'Sin limite' : `${usage}%`}
+                    </span>
+                  </div>
+                  <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <DebtMetric label="Balance" value={formatMoney(balance)} />
+                    <DebtMetric label="Limite" value={formatMoney(limit)} />
+                  </dl>
+                  {usage !== null ? (
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                      <div
+                        className={`h-full rounded-full ${overLimit ? 'bg-coral-500' : usage >= 80 ? 'bg-gold-500' : 'bg-brand-600'}`}
+                        style={{ width: `${Math.min(100, usage)}%` }}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-muted dark:text-slate-400">
+            Aun no hay subcuentas registradas para esta tarjeta.
+          </p>
+        )}
+      </div>
+    </section>
+  )
 }
 
 function DebtAlertCard({

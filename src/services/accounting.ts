@@ -10,6 +10,7 @@ import type {
   DebtFormValues,
   DebtPayment,
   DebtPaymentFormValues,
+  DebtSubaccount,
   Movement,
   MovementFilters,
   MovementFormValues,
@@ -61,9 +62,36 @@ function requireSupabase() {
   return supabase
 }
 
+function parseOptionalFinanceNumber(value: string, fieldName: string, options: { allowZero?: boolean } = {}) {
+  if (!value.trim()) return null
+  const numericValue = Number(value)
+  const minimum = options.allowZero === false ? Number.MIN_VALUE : 0
+  if (!Number.isFinite(numericValue) || numericValue < minimum) {
+    throw new Error(`${fieldName} debe ser un numero valido.`)
+  }
+  return numericValue
+}
+
 function isPreferencesSchemaError(error: { message?: string; details?: string } | null) {
   const message = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase()
   return message.includes('user_preferences') || message.includes('schema cache') || message.includes('does not exist')
+}
+
+function isDebtAdvancedSchemaError(error: { message?: string; details?: string; code?: string } | null) {
+  const message = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.code ?? ''}`.toLowerCase()
+  return (
+    message.includes('debt_subaccounts') ||
+    message.includes('balance_dop') ||
+    message.includes('balance_usd') ||
+    message.includes('minimum_payment_dop') ||
+    message.includes('minimum_payment_usd') ||
+    message.includes('credit_limit_dop') ||
+    message.includes('credit_limit_usd') ||
+    message.includes('usd_to_dop_rate') ||
+    message.includes('credit_card_status') ||
+    message.includes('schema cache') ||
+    message.includes('does not exist')
+  )
 }
 
 export async function getUserCurrencyPreference(userId: string) {
@@ -190,7 +218,7 @@ export async function saveAccount(userId: string, values: AccountFormValues) {
     throw new Error('El balance inicial debe ser un numero valido.')
   }
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     user_id: userId,
     name: values.name.trim(),
     type: values.type,
@@ -550,15 +578,34 @@ export async function listDebts(userId: string) {
   return data as Debt[]
 }
 
+export async function listDebtSubaccounts(userId: string) {
+  const client = requireSupabase()
+  const { data, error } = await client
+    .from('debt_subaccounts')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return data as DebtSubaccount[]
+}
+
 export async function saveDebt(userId: string, values: DebtFormValues) {
   const client = requireSupabase()
   const initialAmount = Number(values.initial_amount)
   const outstandingBalance = Number(values.outstanding_balance)
   const interestRate = values.interest_rate.trim() ? Number(values.interest_rate) : null
   const minimumPayment = values.minimum_payment.trim() ? Number(values.minimum_payment) : null
-  const creditLimit = values.credit_limit.trim() ? Number(values.credit_limit) : null
-  const usedBalance = values.used_balance.trim() ? Number(values.used_balance) : null
-  const statementBalance = values.statement_balance.trim() ? Number(values.statement_balance) : null
+  const creditLimit = parseOptionalFinanceNumber(values.credit_limit, 'El limite de credito')
+  const usedBalance = parseOptionalFinanceNumber(values.used_balance, 'El balance usado')
+  const statementBalance = parseOptionalFinanceNumber(values.statement_balance, 'El pendiente del ultimo corte')
+  const balanceDop = parseOptionalFinanceNumber(values.balance_dop, 'El balance DOP')
+  const balanceUsd = parseOptionalFinanceNumber(values.balance_usd, 'El balance USD')
+  const minimumPaymentDop = parseOptionalFinanceNumber(values.minimum_payment_dop, 'El pago minimo DOP')
+  const minimumPaymentUsd = parseOptionalFinanceNumber(values.minimum_payment_usd, 'El pago minimo USD')
+  const creditLimitDop = parseOptionalFinanceNumber(values.credit_limit_dop, 'El limite DOP')
+  const creditLimitUsd = parseOptionalFinanceNumber(values.credit_limit_usd, 'El limite USD')
+  const usdToDopRate = values.usd_to_dop_rate.trim() ? Number(values.usd_to_dop_rate) : null
 
   if (!values.name.trim()) {
     throw new Error('El nombre de la deuda es obligatorio.')
@@ -594,10 +641,37 @@ export async function saveDebt(userId: string, values: DebtFormValues) {
     if (statementBalance !== null && (!Number.isFinite(statementBalance) || statementBalance < 0)) {
       throw new Error('El pendiente del ultimo corte debe ser un numero valido.')
     }
+    if (usdToDopRate !== null && (!Number.isFinite(usdToDopRate) || usdToDopRate <= 0)) {
+      throw new Error('La tasa USD a DOP debe ser mayor que 0.')
+    }
   }
   if (!values.start_date) {
     throw new Error('La fecha de inicio es obligatoria.')
   }
+
+  const subaccountRows = values.type === 'credit_card'
+    ? values.subaccounts
+        .map((subaccount) => ({
+          user_id: userId,
+          debt_id: '',
+          name: subaccount.name.trim(),
+          balance: subaccount.balance.trim() ? Number(subaccount.balance) : 0,
+          credit_limit: subaccount.credit_limit.trim() ? Number(subaccount.credit_limit) : 0,
+        }))
+        .filter((subaccount) => subaccount.name || subaccount.balance > 0 || subaccount.credit_limit > 0)
+    : []
+
+  subaccountRows.forEach((subaccount) => {
+    if (!subaccount.name) {
+      throw new Error('Cada subcuenta debe tener un nombre.')
+    }
+    if (!Number.isFinite(subaccount.balance) || subaccount.balance < 0) {
+      throw new Error(`El balance de ${subaccount.name} debe ser mayor o igual a 0.`)
+    }
+    if (!Number.isFinite(subaccount.credit_limit) || subaccount.credit_limit < 0) {
+      throw new Error(`El limite de ${subaccount.name} debe ser mayor o igual a 0.`)
+    }
+  })
 
   const payload = {
     user_id: userId,
@@ -610,23 +684,77 @@ export async function saveDebt(userId: string, values: DebtFormValues) {
     due_date: values.due_date || null,
     interest_rate: interestRate,
     minimum_payment: minimumPayment,
-    card_last4: values.type === 'credit_card' ? values.card_last4.trim() || null : null,
-    credit_limit: values.type === 'credit_card' ? creditLimit : null,
-    used_balance: values.type === 'credit_card' ? usedBalance : null,
-    statement_balance: values.type === 'credit_card' ? statementBalance : null,
-    statement_date: values.type === 'credit_card' ? values.statement_date || null : null,
-    credit_card_status: values.type === 'credit_card' ? values.credit_card_status || null : null,
     payment_frequency: values.payment_frequency,
     status: values.status,
     notes: values.notes.trim() || null,
   }
 
-  const query = values.id
-    ? client.from('debts').update(payload).eq('id', values.id).eq('user_id', userId)
-    : client.from('debts').insert(payload)
+  const creditCardPayload: Record<string, unknown> = values.type === 'credit_card'
+    ? {
+        card_last4: values.card_last4.trim() || null,
+        credit_limit: creditLimit,
+        used_balance: usedBalance,
+        statement_balance: statementBalance,
+        balance_dop: balanceDop,
+        balance_usd: balanceUsd,
+        minimum_payment_dop: minimumPaymentDop,
+        minimum_payment_usd: minimumPaymentUsd,
+        credit_limit_dop: creditLimitDop,
+        credit_limit_usd: creditLimitUsd,
+        usd_to_dop_rate: usdToDopRate,
+        statement_date: values.statement_date || null,
+        credit_card_status: values.credit_card_status || null,
+      }
+    : {}
 
-  const { error } = await query
-  if (error) throw error
+  const debtPayload: Record<string, unknown> = { ...payload, ...creditCardPayload }
+
+  const query = values.id
+    ? client.from('debts').update(debtPayload).eq('id', values.id).eq('user_id', userId).select('id').single()
+    : client.from('debts').insert(debtPayload).select('id').single()
+
+  const { data, error } = await query
+  if (error) {
+    if (values.type === 'credit_card' && isDebtAdvancedSchemaError(error)) {
+      throw new Error('Falta ejecutar el SQL actualizado de deudas en Supabase para guardar tarjetas avanzadas.')
+    }
+    throw error
+  }
+
+  const debtId = data.id as string
+  if (values.type === 'credit_card') {
+    const { error: deleteSubaccountsError } = await client
+      .from('debt_subaccounts')
+      .delete()
+      .eq('debt_id', debtId)
+      .eq('user_id', userId)
+    if (deleteSubaccountsError) {
+      if (isDebtAdvancedSchemaError(deleteSubaccountsError)) {
+        throw new Error('Falta crear la tabla debt_subaccounts. Ejecuta el SQL actualizado de deudas en Supabase.')
+      }
+      throw deleteSubaccountsError
+    }
+
+    if (subaccountRows.length) {
+      const { error: insertSubaccountsError } = await client.from('debt_subaccounts').insert(
+        subaccountRows.map((subaccount) => ({ ...subaccount, debt_id: debtId })),
+      )
+      if (insertSubaccountsError) {
+        if (isDebtAdvancedSchemaError(insertSubaccountsError)) {
+          throw new Error('Falta crear la tabla debt_subaccounts. Ejecuta el SQL actualizado de deudas en Supabase.')
+        }
+        throw insertSubaccountsError
+      }
+    }
+  } else if (values.id) {
+    const { error: deleteSubaccountsError } = await client
+      .from('debt_subaccounts')
+      .delete()
+      .eq('debt_id', values.id)
+      .eq('user_id', userId)
+    if (deleteSubaccountsError && !isDebtAdvancedSchemaError(deleteSubaccountsError)) throw deleteSubaccountsError
+  }
+
   notifyDebtsChanged()
 }
 

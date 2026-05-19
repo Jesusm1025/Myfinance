@@ -4,7 +4,7 @@ export type AccountType = 'cash' | 'bank' | 'debit_card' | 'credit_card' | 'savi
 export type DebtType = 'loan' | 'credit_card' | 'family' | 'store' | 'other'
 export type DebtPaymentFrequency = 'once' | 'weekly' | 'biweekly' | 'monthly'
 export type DebtStatus = 'active' | 'paid' | 'overdue'
-export type CreditCardDebtStatus = 'current' | 'overdue' | 'delinquent'
+export type CreditCardDebtStatus = 'al_dia' | 'vencida' | 'mora' | 'sobregirada'
 
 export type Account = {
   id: string
@@ -144,6 +144,13 @@ export type Debt = {
   credit_limit: number | null
   used_balance: number | null
   statement_balance: number | null
+  balance_dop: number | null
+  balance_usd: number | null
+  minimum_payment_dop: number | null
+  minimum_payment_usd: number | null
+  credit_limit_dop: number | null
+  credit_limit_usd: number | null
+  usd_to_dop_rate: number | null
   statement_date: string | null
   credit_card_status: CreditCardDebtStatus | null
   payment_frequency: DebtPaymentFrequency
@@ -151,6 +158,25 @@ export type Debt = {
   notes: string | null
   created_at: string
   updated_at?: string
+}
+
+export type DebtSubaccount = {
+  id: string
+  debt_id: string
+  user_id: string
+  name: string
+  balance: number
+  credit_limit: number
+  available: number
+  created_at: string
+  updated_at?: string
+}
+
+export type DebtSubaccountFormValues = {
+  id?: string
+  name: string
+  balance: string
+  credit_limit: string
 }
 
 export type DebtPayment = {
@@ -180,8 +206,16 @@ export type DebtFormValues = {
   credit_limit: string
   used_balance: string
   statement_balance: string
+  balance_dop: string
+  balance_usd: string
+  minimum_payment_dop: string
+  minimum_payment_usd: string
+  credit_limit_dop: string
+  credit_limit_usd: string
+  usd_to_dop_rate: string
   statement_date: string
   credit_card_status: CreditCardDebtStatus | ''
+  subaccounts: DebtSubaccountFormValues[]
   payment_frequency: DebtPaymentFrequency
   status: DebtStatus
   notes: string

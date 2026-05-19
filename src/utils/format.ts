@@ -89,9 +89,10 @@ export function debtStatusLabel(status: DebtStatus) {
 export function creditCardDebtStatusLabel(status: CreditCardDebtStatus | null | undefined) {
   if (!status) return 'Sin estado'
   const labels = {
-    current: 'Al dia',
-    overdue: 'Vencida',
-    delinquent: 'En mora',
+    al_dia: 'Al dia',
+    vencida: 'Vencida',
+    mora: 'En mora',
+    sobregirada: 'Sobregirada',
   }
   return labels[status]
 }
