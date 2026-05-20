@@ -14,6 +14,7 @@ const CategoriesPage = lazy(() => import('./pages/CategoriesPage').then((module)
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
 const DebtsPage = lazy(() => import('./pages/DebtsPage').then((module) => ({ default: module.DebtsPage })))
 const ImportBankEmailsPage = lazy(() => import('./pages/ImportBankEmailsPage').then((module) => ({ default: module.ImportBankEmailsPage })))
+const MonthlyClosePage = lazy(() => import('./pages/MonthlyClosePage').then((module) => ({ default: module.MonthlyClosePage })))
 const MovementsPage = lazy(() => import('./pages/MovementsPage').then((module) => ({ default: module.MovementsPage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })))
@@ -60,6 +61,8 @@ function App() {
                   <Route path="budgets" element={<BudgetsPage />} />
                   <Route path="reportes" element={<ReportsPage />} />
                   <Route path="reports" element={<ReportsPage />} />
+                  <Route path="cierre-mensual" element={<MonthlyClosePage />} />
+                  <Route path="monthly-close" element={<MonthlyClosePage />} />
                   <Route path="configuracion" element={<SettingsPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                 </Route>

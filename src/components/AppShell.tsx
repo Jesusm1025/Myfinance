@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { BarChart3, CircleDollarSign, FileBarChart, FolderTree, Landmark, LogOut, MailSearch, MoreHorizontal, Moon, PiggyBank, Settings, Sun, WalletCards, X } from 'lucide-react'
+import { BarChart3, CalendarCheck, CircleDollarSign, FileBarChart, FolderTree, Landmark, LogOut, MailSearch, MoreHorizontal, Moon, PiggyBank, Settings, Sun, WalletCards, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
@@ -14,6 +14,14 @@ const primaryNavItems = [
   { to: '/deudas', label: 'Deudas', mobileLabel: 'Deudas', icon: CircleDollarSign, paths: ['/deudas', '/debts'] },
   { to: '/reportes', label: 'Reportes', mobileLabel: 'Reportes', icon: FileBarChart, paths: ['/reportes', '/reports'] },
 ]
+
+const monthlyCloseNavItem = {
+  to: '/cierre-mensual',
+  label: 'Cierre mensual',
+  mobileLabel: 'Cierre',
+  icon: CalendarCheck,
+  paths: ['/cierre-mensual', '/monthly-close'],
+}
 
 const managementNavItems = [
   { to: '/categorias', label: 'Categorias', mobileLabel: 'Categ.', icon: FolderTree, paths: ['/categorias', '/categories'] },
@@ -36,13 +44,16 @@ const settingsNavItems = [
 ]
 
 const navGroups = [
-  { label: 'Principal', items: primaryNavItems },
+  { label: 'Principal', items: [...primaryNavItems, monthlyCloseNavItem] },
   { label: 'Gestion', items: managementNavItems },
   { label: 'Automatizacion', items: automationNavItems },
   { label: 'Configuracion', items: settingsNavItems },
 ]
 
-const moreNavGroups = navGroups.slice(1)
+const moreNavGroups = [
+  { label: 'Principal', items: [monthlyCloseNavItem] },
+  ...navGroups.slice(1),
+]
 
 function isNavItemActive(pathname: string, item: { paths: string[] }) {
   return item.paths.some((path) => pathname === path || (path !== '/' && pathname.startsWith(`${path}/`)))
