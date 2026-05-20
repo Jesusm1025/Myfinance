@@ -1,9 +1,21 @@
 import type { SavingsGoal, SavingsGoalContribution, SavingsGoalContributionFormValues, SavingsGoalFormValues, SavingsGoalStatus } from '../types/finance'
-import { notifySavingsGoalsChanged } from '../events/financeEvents'
+import { notifyAccountsChanged, notifySavingsGoalsChanged } from '../events/financeEvents'
 import { isSchemaMissingError, parseOptionalFinanceNumber, requireSupabase } from './supabaseClient'
 
 function isSavingsGoalsSchemaError(error: { message?: string; details?: string; code?: string } | null) {
-  return isSchemaMissingError(error, ['savings_goals', 'savings_goal_contributions', 'schema cache', 'does not exist'])
+  return isSchemaMissingError(error, [
+    'savings_goals',
+    'savings_goal_contributions',
+    'register_savings_goal_contribution',
+    'update_savings_goal_contribution',
+    'delete_savings_goal_contribution',
+    'source_account_id',
+    'destination_account_id',
+    'transfer_id',
+    'contribution_mode',
+    'schema cache',
+    'does not exist',
+  ])
 }
 
 export async function listSavingsGoals(userId: string) {
@@ -67,6 +79,7 @@ export async function saveSavingsGoal(userId: string, values: SavingsGoalFormVal
     throw error
   }
   notifySavingsGoalsChanged()
+  notifyAccountsChanged()
 }
 
 export async function updateSavingsGoalStatus(userId: string, id: string, status: SavingsGoalStatus) {
@@ -87,7 +100,7 @@ export async function listSavingsGoalContributions(userId: string) {
   const client = requireSupabase()
   const { data, error } = await client
     .from('savings_goal_contributions')
-    .select('*, account:accounts(id, name, color)')
+    .select('*, account:accounts(id, name, color), source_account:accounts!savings_goal_contributions_source_account_id_fkey(id, name, color), destination_account:accounts!savings_goal_contributions_destination_account_id_fkey(id, name, color)')
     .eq('user_id', userId)
     .order('contribution_date', { ascending: false })
     .order('created_at', { ascending: false })
@@ -127,35 +140,54 @@ export async function saveSavingsGoalContribution(userId: string, values: Saving
   if (!values.contribution_date) {
     throw new Error('La fecha del aporte es obligatoria.')
   }
+  if (values.contribution_mode === 'transfer') {
+    if (!values.source_account_id || !values.destination_account_id) {
+      throw new Error('Selecciona cuenta origen y destino para la transferencia.')
+    }
+    if (values.source_account_id === values.destination_account_id) {
+      throw new Error('La cuenta origen y destino deben ser diferentes.')
+    }
+  }
 
   await assertContributionGoal(userId, values.goal_id)
 
   const payload = {
-    user_id: userId,
-    goal_id: values.goal_id,
-    account_id: values.account_id || null,
-    transaction_id: null,
-    amount,
-    contribution_date: values.contribution_date,
-    note: values.note.trim() || null,
+    p_goal_id: values.goal_id,
+    p_account_id: values.account_id || null,
+    p_source_account_id: values.contribution_mode === 'transfer' ? values.source_account_id : null,
+    p_destination_account_id: values.contribution_mode === 'transfer' ? values.destination_account_id : null,
+    p_contribution_mode: values.contribution_mode,
+    p_amount: amount,
+    p_contribution_date: values.contribution_date,
+    p_note: values.note.trim() || null,
   }
 
-  const query = values.id
-    ? client.from('savings_goal_contributions').update(payload).eq('id', values.id).eq('user_id', userId)
-    : client.from('savings_goal_contributions').insert(payload)
-  const { error } = await query
+  const { error } = values.id
+    ? await client.rpc('update_savings_goal_contribution', {
+        p_contribution_id: values.id,
+        ...payload,
+      })
+    : await client.rpc('register_savings_goal_contribution', payload)
+
   if (error) {
     if (isSavingsGoalsSchemaError(error)) {
-      throw new Error('Falta ejecutar el SQL de aportes a metas de ahorro en Supabase.')
+      throw new Error('Falta ejecutar el SQL actualizado de aportes a metas de ahorro en Supabase.')
     }
     throw error
   }
   notifySavingsGoalsChanged()
 }
 
-export async function deleteSavingsGoalContribution(userId: string, id: string) {
+export async function deleteSavingsGoalContribution(userId: string, id: string, deleteTransfer = false) {
+  if (!userId) {
+    throw new Error('Debes iniciar sesion para eliminar aportes.')
+  }
   const client = requireSupabase()
-  const { error } = await client.from('savings_goal_contributions').delete().eq('id', id).eq('user_id', userId)
+  const { error } = await client.rpc('delete_savings_goal_contribution', {
+    p_contribution_id: id,
+    p_delete_transfer: deleteTransfer,
+  })
   if (error) throw error
   notifySavingsGoalsChanged()
+  if (deleteTransfer) notifyAccountsChanged()
 }

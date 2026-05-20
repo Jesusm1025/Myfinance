@@ -43,6 +43,9 @@ function initialContribution(goalId = ''): SavingsGoalContributionFormValues {
   return {
     goal_id: goalId,
     account_id: '',
+    source_account_id: '',
+    destination_account_id: '',
+    contribution_mode: 'manual',
     amount: '',
     contribution_date: new Date().toISOString().slice(0, 10),
     note: '',
@@ -211,7 +214,11 @@ export function SavingsGoalsPage() {
 
   function startContribution(goal: SavingsGoal) {
     setSelectedContributionGoalId(goal.id)
-    setContributionValues(initialContribution(goal.id))
+    setContributionValues({
+      ...initialContribution(goal.id),
+      account_id: goal.account_id ?? '',
+      destination_account_id: goal.account_id ?? '',
+    })
     setShowContributionForm(true)
     setShowForm(false)
     setSuccess('')
@@ -224,6 +231,9 @@ export function SavingsGoalsPage() {
       id: contribution.id,
       goal_id: contribution.goal_id,
       account_id: contribution.account_id ?? '',
+      source_account_id: contribution.source_account_id ?? '',
+      destination_account_id: contribution.destination_account_id ?? '',
+      contribution_mode: contribution.contribution_mode ?? 'manual',
       amount: String(contribution.amount),
       contribution_date: contribution.contribution_date,
       note: contribution.note ?? '',
@@ -270,18 +280,39 @@ export function SavingsGoalsPage() {
 
   async function removeContribution(contribution: SavingsGoalContribution) {
     if (!user) return
-    const confirmed = await confirm({
-      title: 'Eliminar aporte?',
-      description: 'El progreso de la meta se recalculara automaticamente al eliminar este aporte.',
-      confirmLabel: 'Eliminar',
-      variant: 'danger',
-    })
-    if (!confirmed) return
+    let deleteTransfer = false
+    if (contribution.transfer_id) {
+      deleteTransfer = await confirm({
+        title: 'Eliminar aporte y transferencia?',
+        description: 'Este aporte tiene una transferencia asociada. Si confirmas, tambien se eliminara la transferencia y se revertira el cambio entre cuentas.',
+        confirmLabel: 'Eliminar ambos',
+        cancelLabel: 'No, revisar',
+        variant: 'danger',
+      })
+
+      if (!deleteTransfer) {
+        const deleteOnlyContribution = await confirm({
+          title: 'Eliminar solo el aporte?',
+          description: 'La transferencia quedara registrada en cuentas, pero el aporte dejara de contar para la meta.',
+          confirmLabel: 'Eliminar solo aporte',
+          variant: 'danger',
+        })
+        if (!deleteOnlyContribution) return
+      }
+    } else {
+      const confirmed = await confirm({
+        title: 'Eliminar aporte?',
+        description: 'El progreso de la meta se recalculara automaticamente al eliminar este aporte.',
+        confirmLabel: 'Eliminar',
+        variant: 'danger',
+      })
+      if (!confirmed) return
+    }
 
     setError('')
     setSuccess('')
     try {
-      await deleteSavingsGoalContribution(user.id, contribution.id)
+      await deleteSavingsGoalContribution(user.id, contribution.id, deleteTransfer)
       setSuccess('Aporte eliminado correctamente.')
       await loadGoals()
     } catch (deleteError) {

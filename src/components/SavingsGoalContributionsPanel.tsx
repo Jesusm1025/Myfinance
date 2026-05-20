@@ -3,6 +3,10 @@ import type { SavingsGoal, SavingsGoalContribution } from '../types/finance'
 import { formatCurrencyAmount } from '../utils/currency'
 import { formatDate } from '../utils/format'
 
+function contributionModeLabel(contribution: SavingsGoalContribution) {
+  return contribution.contribution_mode === 'transfer' ? 'Transferencia' : 'Manual'
+}
+
 export function SavingsGoalContributionsPanel({
   goal,
   contributions,
@@ -52,6 +56,12 @@ export function SavingsGoalContributionsPanel({
                 <p className="text-sm text-muted dark:text-slate-400">
                   {formatDate(contribution.contribution_date)}
                   {contribution.account ? ` - ${contribution.account.name}` : ''}
+                </p>
+                <p className="text-sm text-muted dark:text-slate-400">
+                  {contributionModeLabel(contribution)}
+                  {contribution.contribution_mode === 'transfer'
+                    ? `: ${contribution.source_account?.name ?? 'Origen'} a ${contribution.destination_account?.name ?? 'Destino'}`
+                    : ''}
                 </p>
                 {contribution.note ? (
                   <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{contribution.note}</p>

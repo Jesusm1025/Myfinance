@@ -9,6 +9,7 @@ export type DebtInstallmentStatus = 'pending' | 'paid' | 'overdue'
 export type DebtCurrencyCode = 'DOP' | 'USD' | 'EUR' | 'BOB'
 export type SavingsGoalType = 'emergency_fund' | 'vehicle_down_payment' | 'travel' | 'purchase' | 'monthly_savings' | 'custom'
 export type SavingsGoalStatus = 'active' | 'completed' | 'paused' | 'cancelled'
+export type SavingsGoalContributionMode = 'manual' | 'transfer'
 
 export type Account = {
   id: string
@@ -276,6 +277,10 @@ export type SavingsGoalContribution = {
   user_id: string
   goal_id: string
   account_id: string | null
+  source_account_id: string | null
+  destination_account_id: string | null
+  transfer_id: string | null
+  contribution_mode: SavingsGoalContributionMode
   transaction_id: string | null
   amount: number
   contribution_date: string
@@ -283,6 +288,8 @@ export type SavingsGoalContribution = {
   created_at: string
   updated_at?: string
   account?: Pick<Account, 'id' | 'name' | 'color'> | null
+  source_account?: Pick<Account, 'id' | 'name' | 'color'> | null
+  destination_account?: Pick<Account, 'id' | 'name' | 'color'> | null
 }
 
 export type SavingsGoalFormValues = {
@@ -305,6 +312,9 @@ export type SavingsGoalContributionFormValues = {
   id?: string
   goal_id: string
   account_id: string
+  source_account_id: string
+  destination_account_id: string
+  contribution_mode: SavingsGoalContributionMode
   amount: string
   contribution_date: string
   note: string
