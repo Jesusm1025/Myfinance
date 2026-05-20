@@ -160,6 +160,10 @@ export function SavingsGoalsPage() {
     () => goals.find((goal) => goal.id === selectedContributionGoalId) ?? null,
     [goals, selectedContributionGoalId],
   )
+  const editingGoalHasContributions = useMemo(
+    () => Boolean(values.id && (contributionsByGoal.get(values.id)?.length ?? 0) > 0),
+    [contributionsByGoal, values.id],
+  )
 
   async function handleSubmit() {
     if (!user) return
@@ -259,9 +263,15 @@ export function SavingsGoalsPage() {
 
   async function removeGoal(goal: SavingsGoal) {
     if (!user) return
+    const goalContributions = contributionsByGoal.get(goal.id) ?? []
+    const transferCount = goalContributions.filter((contribution) => contribution.transfer_id).length
     const confirmed = await confirm({
       title: `Eliminar "${goal.name}"?`,
-      description: 'La meta se eliminara de tu lista. Esto no afecta tus movimientos ni cuentas.',
+      description: transferCount
+        ? `Esta meta tiene ${transferCount} aporte(s) con transferencia asociada. La meta y su historial de aportes se eliminaran, pero las transferencias historicas permaneceran en Cuentas y seguiran afectando balances.`
+        : goalContributions.length
+          ? 'La meta y su historial de aportes se eliminaran. Esto no afecta movimientos ni cuentas.'
+          : 'La meta se eliminara de tu lista. Esto no afecta tus movimientos ni cuentas.',
       confirmLabel: 'Eliminar',
       variant: 'danger',
     })
@@ -374,6 +384,7 @@ export function SavingsGoalsPage() {
               values={values}
               accounts={accounts}
               saving={saving}
+              currentAmountReadOnly={editingGoalHasContributions}
               onChange={setValues}
               onSubmit={() => void handleSubmit()}
               onCancel={() => {

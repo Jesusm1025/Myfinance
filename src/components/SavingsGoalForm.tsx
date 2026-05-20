@@ -14,6 +14,7 @@ export function SavingsGoalForm({
   values,
   accounts,
   saving,
+  currentAmountReadOnly = false,
   onChange,
   onSubmit,
   onCancel,
@@ -21,6 +22,7 @@ export function SavingsGoalForm({
   values: SavingsGoalFormValues
   accounts: Account[]
   saving: boolean
+  currentAmountReadOnly?: boolean
   onChange: (values: SavingsGoalFormValues) => void
   onSubmit: () => void
   onCancel: () => void
@@ -83,9 +85,15 @@ export function SavingsGoalForm({
             min="0"
             step="0.01"
             value={values.current_amount}
+            readOnly={currentAmountReadOnly}
             onChange={(event) => onChange({ ...values, current_amount: event.target.value })}
-            className={`mt-1 ${fieldClass}`}
+            className={`mt-1 ${fieldClass} ${currentAmountReadOnly ? 'cursor-not-allowed bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' : ''}`}
           />
+          {currentAmountReadOnly ? (
+            <span className="mt-1 block text-xs text-muted dark:text-slate-400">
+              El monto actual se recalcula automaticamente desde los aportes.
+            </span>
+          ) : null}
         </label>
 
         <label className="block">

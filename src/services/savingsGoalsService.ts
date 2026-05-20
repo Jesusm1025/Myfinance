@@ -36,7 +36,7 @@ export async function listSavingsGoals(userId: string) {
 export async function saveSavingsGoal(userId: string, values: SavingsGoalFormValues) {
   const client = requireSupabase()
   const targetAmount = Number(values.target_amount)
-  const currentAmount = Number(values.current_amount)
+  let currentAmount = Number(values.current_amount)
   const monthlyTarget = parseOptionalFinanceNumber(values.monthly_target, 'La meta mensual', { allowZero: true })
 
   if (!values.name.trim()) {
@@ -50,6 +50,27 @@ export async function saveSavingsGoal(userId: string, values: SavingsGoalFormVal
   }
   if (currentAmount > targetAmount * 10) {
     throw new Error('El monto actual luce demasiado alto para esta meta.')
+  }
+
+  if (values.id) {
+    const { count, error: countError } = await client
+      .from('savings_goal_contributions')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('goal_id', values.id)
+
+    if (countError && !isSavingsGoalsSchemaError(countError)) throw countError
+    if ((count ?? 0) > 0) {
+      const { data: currentGoal, error: goalError } = await client
+        .from('savings_goals')
+        .select('current_amount')
+        .eq('id', values.id)
+        .eq('user_id', userId)
+        .single()
+
+      if (goalError) throw goalError
+      currentAmount = Number(currentGoal.current_amount)
+    }
   }
 
   const payload = {
@@ -79,7 +100,6 @@ export async function saveSavingsGoal(userId: string, values: SavingsGoalFormVal
     throw error
   }
   notifySavingsGoalsChanged()
-  notifyAccountsChanged()
 }
 
 export async function updateSavingsGoalStatus(userId: string, id: string, status: SavingsGoalStatus) {
@@ -176,6 +196,7 @@ export async function saveSavingsGoalContribution(userId: string, values: Saving
     throw error
   }
   notifySavingsGoalsChanged()
+  if (values.contribution_mode === 'transfer' || values.id) notifyAccountsChanged()
 }
 
 export async function deleteSavingsGoalContribution(userId: string, id: string, deleteTransfer = false) {
