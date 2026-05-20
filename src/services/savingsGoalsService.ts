@@ -100,7 +100,7 @@ export async function listSavingsGoalContributions(userId: string) {
   const client = requireSupabase()
   const { data, error } = await client
     .from('savings_goal_contributions')
-    .select('*, account:accounts(id, name, color), source_account:accounts!savings_goal_contributions_source_account_id_fkey(id, name, color), destination_account:accounts!savings_goal_contributions_destination_account_id_fkey(id, name, color)')
+    .select('*, account:accounts!savings_goal_contributions_account_id_fkey(id, name, color), source_account:accounts!savings_goal_contributions_source_account_id_fkey(id, name, color), destination_account:accounts!savings_goal_contributions_destination_account_id_fkey(id, name, color)')
     .eq('user_id', userId)
     .order('contribution_date', { ascending: false })
     .order('created_at', { ascending: false })
