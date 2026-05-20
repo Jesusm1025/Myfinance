@@ -19,6 +19,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Tags,
+  Target,
   TrendingUp,
   Wallet,
 } from 'lucide-react'
@@ -30,12 +31,14 @@ import { SkeletonList, SkeletonStats } from '../components/Skeleton'
 import { SmartAlertsPanel } from '../components/SmartAlertsPanel'
 import { StatCard } from '../components/StatCard'
 import { StatusMessage } from '../components/StatusMessage'
-import { budgetsChangedEvent, categoriesChangedEvent, debtsChangedEvent, movementsChangedEvent } from '../events/financeEvents'
-import { listAllMovements, listCategories, listDebtInstallments, listDebts, listMonthlyBudgets, listMovements } from '../services/accounting'
-import type { Category, Debt, DebtInstallment, MonthlyBudget, Movement, MovementFilters } from '../types/finance'
+import { budgetsChangedEvent, categoriesChangedEvent, debtsChangedEvent, movementsChangedEvent, savingsGoalsChangedEvent } from '../events/financeEvents'
+import { listAllMovements, listCategories, listDebtInstallments, listDebts, listMonthlyBudgets, listMovements, listSavingsGoals } from '../services/accounting'
+import type { Category, Debt, DebtInstallment, MonthlyBudget, Movement, MovementFilters, SavingsGoal } from '../types/finance'
 import { currentMonthValue, formatDate, formatMoney, monthRange, paymentMethodLabel } from '../utils/format'
 import { detectRecurringExpenses } from '../utils/recurringExpenses'
 import { buildBudgetSmartAlerts, buildDebtSmartAlerts, sortSmartAlerts } from '../utils/smartAlerts'
+import { formatCurrencyAmount, getActiveCurrency } from '../utils/currency'
+import { savingsGoalProgress } from '../components/SavingsGoalCard'
 
 const emptyFilters: MovementFilters = {
   month: currentMonthValue(),
@@ -66,6 +69,7 @@ export function DashboardPage() {
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([])
   const [debts, setDebts] = useState<Debt[]>([])
   const [installments, setInstallments] = useState<DebtInstallment[]>([])
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -81,14 +85,16 @@ export function DashboardPage() {
       listMonthlyBudgets(user.id, month).catch(() => [] as MonthlyBudget[]),
       listDebts(user.id).catch(() => [] as Debt[]),
       listDebtInstallments(user.id).catch(() => [] as DebtInstallment[]),
+      listSavingsGoals(user.id).catch(() => [] as SavingsGoal[]),
     ])
-      .then(([monthData, allData, categoryData, budgetData, debtData, installmentData]) => {
+      .then(([monthData, allData, categoryData, budgetData, debtData, installmentData, savingsGoalData]) => {
         setMonthlyMovements(monthData)
         setAllMovements(allData)
         setCategories(categoryData)
         setBudgets(budgetData)
         setDebts(debtData)
         setInstallments(installmentData)
+        setSavingsGoals(savingsGoalData)
       })
       .catch((loadError) => {
         setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el dashboard.')
@@ -105,11 +111,13 @@ export function DashboardPage() {
     window.addEventListener(categoriesChangedEvent, loadDashboard)
     window.addEventListener(budgetsChangedEvent, loadDashboard)
     window.addEventListener(debtsChangedEvent, loadDashboard)
+    window.addEventListener(savingsGoalsChangedEvent, loadDashboard)
     return () => {
       window.removeEventListener(movementsChangedEvent, loadDashboard)
       window.removeEventListener(categoriesChangedEvent, loadDashboard)
       window.removeEventListener(budgetsChangedEvent, loadDashboard)
       window.removeEventListener(debtsChangedEvent, loadDashboard)
+      window.removeEventListener(savingsGoalsChangedEvent, loadDashboard)
     }
   }, [loadDashboard])
 
@@ -199,6 +207,23 @@ export function DashboardPage() {
     return sortSmartAlerts([...budgetAlerts, ...debtAlerts]).slice(0, 5)
   }, [budgets, categories, categorySpend, debts, installments, monthlySummary.expenses])
   const recurringExpenses = useMemo(() => detectRecurringExpenses(allMovements), [allMovements])
+  const savingsGoalsSummary = useMemo(() => {
+    const activeGoals = savingsGoals.filter((goal) => goal.status !== 'cancelled')
+    const currency = getActiveCurrency()
+    const goalsInCurrency = activeGoals.filter((goal) => goal.currency === currency)
+    const totalSaved = goalsInCurrency.reduce((total, goal) => total + Number(goal.current_amount), 0)
+    const averageProgress = activeGoals.length
+      ? activeGoals.reduce((total, goal) => total + savingsGoalProgress(goal), 0) / activeGoals.length
+      : 0
+    const mainGoal = activeGoals
+      .filter((goal) => goal.status !== 'completed')
+      .sort((a, b) => savingsGoalProgress(b) - savingsGoalProgress(a))[0]
+    const closestGoal = activeGoals
+      .filter((goal) => goal.status !== 'completed' && goal.target_date)
+      .sort((a, b) => String(a.target_date).localeCompare(String(b.target_date)))[0]
+
+    return { totalSaved, averageProgress, mainGoal, closestGoal }
+  }, [savingsGoals])
 
   return (
     <div className="space-y-5">
@@ -255,6 +280,26 @@ export function DashboardPage() {
           />
         </section>
       )}
+
+      {!loading && savingsGoals.length ? (
+        <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="rounded-lg bg-brand-50 p-2 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100">
+              <Target className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-ink dark:text-white">Resumen de metas de ahorro</h3>
+              <p className="text-sm text-muted dark:text-slate-400">Avance general de tus objetivos activos.</p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <SmallMetric label="Meta principal" value={savingsGoalsSummary.mainGoal?.name ?? 'Sin meta activa'} />
+            <SmallMetric label="Total ahorrado" value={formatCurrencyAmount(savingsGoalsSummary.totalSaved)} />
+            <SmallMetric label="Meta mas cercana" value={savingsGoalsSummary.closestGoal?.name ?? 'Sin fecha'} />
+            <SmallMetric label="Progreso promedio" value={`${Math.round(savingsGoalsSummary.averageProgress)}%`} />
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
         <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
@@ -384,6 +429,15 @@ export function DashboardPage() {
           )}
         </article>
       </section>
+    </div>
+  )
+}
+
+function SmallMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950">
+      <p className="text-xs text-muted dark:text-slate-400">{label}</p>
+      <p className="mt-1 truncate font-semibold text-ink dark:text-white">{value}</p>
     </div>
   )
 }

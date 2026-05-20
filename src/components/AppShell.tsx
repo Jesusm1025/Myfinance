@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { BarChart3, CalendarCheck, CircleDollarSign, FileBarChart, FolderTree, Landmark, LogOut, MailSearch, MoreHorizontal, Moon, PiggyBank, Settings, Sun, WalletCards, X } from 'lucide-react'
+import { BarChart3, CalendarCheck, CircleDollarSign, FileBarChart, FolderTree, Landmark, LogOut, MailSearch, MoreHorizontal, Moon, PiggyBank, Settings, Sun, Target, WalletCards, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
@@ -27,6 +27,7 @@ const managementNavItems = [
   { to: '/categorias', label: 'Categorias', mobileLabel: 'Categ.', icon: FolderTree, paths: ['/categorias', '/categories'] },
   { to: '/cuentas', label: 'Cuentas', mobileLabel: 'Cuentas', icon: Landmark, paths: ['/cuentas', '/accounts'] },
   { to: '/presupuestos', label: 'Presupuestos', mobileLabel: 'Presup.', icon: PiggyBank, paths: ['/presupuestos', '/budgets'] },
+  { to: '/metas-ahorro', label: 'Metas de ahorro', mobileLabel: 'Metas', icon: Target, paths: ['/metas-ahorro', '/savings-goals'] },
 ]
 
 const automationNavItems = [

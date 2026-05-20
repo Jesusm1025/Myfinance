@@ -17,6 +17,7 @@ const ImportBankEmailsPage = lazy(() => import('./pages/ImportBankEmailsPage').t
 const MonthlyClosePage = lazy(() => import('./pages/MonthlyClosePage').then((module) => ({ default: module.MonthlyClosePage })))
 const MovementsPage = lazy(() => import('./pages/MovementsPage').then((module) => ({ default: module.MovementsPage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
+const SavingsGoalsPage = lazy(() => import('./pages/SavingsGoalsPage').then((module) => ({ default: module.SavingsGoalsPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })))
 
 function RouteFallback() {
@@ -59,6 +60,8 @@ function App() {
                   <Route path="debts" element={<DebtsPage />} />
                   <Route path="presupuestos" element={<BudgetsPage />} />
                   <Route path="budgets" element={<BudgetsPage />} />
+                  <Route path="metas-ahorro" element={<SavingsGoalsPage />} />
+                  <Route path="savings-goals" element={<SavingsGoalsPage />} />
                   <Route path="reportes" element={<ReportsPage />} />
                   <Route path="reports" element={<ReportsPage />} />
                   <Route path="cierre-mensual" element={<MonthlyClosePage />} />

@@ -5,6 +5,7 @@ import {
   notifyCategoriesChanged,
   notifyDebtsChanged,
   notifyMovementsChanged,
+  notifySavingsGoalsChanged,
 } from '../events/financeEvents'
 import { supabase } from '../lib/supabase'
 
@@ -106,6 +107,16 @@ export function useRealtimeSync(userId?: string) {
           filter: `user_id=eq.${userId}`,
         },
         () => notifyDebtsChanged(),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'savings_goals',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => notifySavingsGoalsChanged(),
       )
       .subscribe((nextStatus, realtimeError) => {
         if (nextStatus === 'SUBSCRIBED') {

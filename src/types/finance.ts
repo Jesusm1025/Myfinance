@@ -7,6 +7,8 @@ export type DebtStatus = 'active' | 'paid' | 'overdue'
 export type CreditCardDebtStatus = 'al_dia' | 'vencida' | 'mora' | 'sobregirada'
 export type DebtInstallmentStatus = 'pending' | 'paid' | 'overdue'
 export type DebtCurrencyCode = 'DOP' | 'USD' | 'EUR' | 'BOB'
+export type SavingsGoalType = 'emergency_fund' | 'vehicle_down_payment' | 'travel' | 'purchase' | 'monthly_savings' | 'custom'
+export type SavingsGoalStatus = 'active' | 'completed' | 'paused' | 'cancelled'
 
 export type Account = {
   id: string
@@ -247,4 +249,40 @@ export type DebtPaymentFormValues = {
   create_movement: boolean
   account_id: string
   note: string
+}
+
+export type SavingsGoal = {
+  id: string
+  user_id: string
+  account_id: string | null
+  name: string
+  description: string | null
+  target_amount: number
+  current_amount: number
+  currency: DebtCurrencyCode
+  goal_type: SavingsGoalType
+  target_date: string | null
+  monthly_target: number | null
+  status: SavingsGoalStatus
+  color: string
+  icon: string | null
+  created_at: string
+  updated_at?: string
+  account?: Pick<Account, 'id' | 'name' | 'color'> | null
+}
+
+export type SavingsGoalFormValues = {
+  id?: string
+  account_id: string
+  name: string
+  description: string
+  target_amount: string
+  current_amount: string
+  currency: DebtCurrencyCode
+  goal_type: SavingsGoalType
+  target_date: string
+  monthly_target: string
+  status: SavingsGoalStatus
+  color: string
+  icon: string
 }

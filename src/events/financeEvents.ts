@@ -3,6 +3,7 @@ export const categoriesChangedEvent = 'finance:categories-changed'
 export const budgetsChangedEvent = 'finance:budgets-changed'
 export const accountsChangedEvent = 'finance:accounts-changed'
 export const debtsChangedEvent = 'finance:debts-changed'
+export const savingsGoalsChangedEvent = 'finance:savings-goals-changed'
 
 export function notifyMovementsChanged() {
   window.dispatchEvent(new CustomEvent(movementsChangedEvent))
@@ -22,4 +23,8 @@ export function notifyAccountsChanged() {
 
 export function notifyDebtsChanged() {
   window.dispatchEvent(new CustomEvent(debtsChangedEvent))
+}
+
+export function notifySavingsGoalsChanged() {
+  window.dispatchEvent(new CustomEvent(savingsGoalsChangedEvent))
 }
