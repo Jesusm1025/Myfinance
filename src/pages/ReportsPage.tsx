@@ -1,19 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
 import {
   ArrowDownCircle,
   ArrowUpCircle,
@@ -27,12 +14,15 @@ import {
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
 import { EmptyState } from '../components/EmptyState'
+import { RecurringExpensesPanel } from '../components/RecurringExpensesPanel'
+import { SkeletonList, SkeletonStats } from '../components/Skeleton'
 import { StatCard } from '../components/StatCard'
 import { StatusMessage } from '../components/StatusMessage'
 import { categoriesChangedEvent, movementsChangedEvent } from '../events/financeEvents'
-import { listMovements } from '../services/accounting'
+import { listAllMovements, listMovements } from '../services/accounting'
 import type { Movement, MovementFilters } from '../types/finance'
 import { exportMovementsToCsv, exportReportToExcel, exportSummaryToPdf } from '../utils/reportExports'
+import { detectRecurringExpenses } from '../utils/recurringExpenses'
 import {
   buildReportSummary,
   groupByCategory,
@@ -40,6 +30,10 @@ import {
   groupByPaymentMethod,
 } from '../utils/reports'
 import { currentMonthValue, formatMoney, monthRange } from '../utils/format'
+
+const ReportsCharts = lazy(() =>
+  import('../components/reports/ReportsCharts').then((module) => ({ default: module.ReportsCharts })),
+)
 
 type ReportMode = 'month' | 'range'
 
@@ -67,6 +61,7 @@ export function ReportsPage() {
   const [from, setFrom] = useState(currentRange.from)
   const [to, setTo] = useState(currentRange.to)
   const [movements, setMovements] = useState<Movement[]>([])
+  const [allMovements, setAllMovements] = useState<Movement[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -96,7 +91,12 @@ export function ReportsPage() {
     setLoading(true)
     setError('')
     try {
-      setMovements(await listMovements(user.id, filters))
+      const [filteredMovements, allMovementData] = await Promise.all([
+        listMovements(user.id, filters),
+        listAllMovements(user.id),
+      ])
+      setMovements(filteredMovements)
+      setAllMovements(allMovementData)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el reporte.')
     } finally {
@@ -124,6 +124,7 @@ export function ReportsPage() {
   const expenseCategories = useMemo(() => categories.filter((category) => category.expenses > 0), [categories])
   const currentPeriod = useMemo(() => periodLabel(mode, month, from, to), [from, mode, month, to])
   const currentFileSuffix = useMemo(() => fileSuffix(mode, month, from, to), [from, mode, month, to])
+  const recurringExpenses = useMemo(() => detectRecurringExpenses(allMovements), [allMovements])
   const canExport = !loading && movements.length > 0
 
   const exportPayload = {
@@ -262,65 +263,47 @@ export function ReportsPage() {
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Ingresos" value={formatMoney(summary.income)} icon={ArrowUpCircle} />
-        <StatCard title="Gastos" value={formatMoney(summary.expenses)} icon={ArrowDownCircle} tone="coral" />
-        <StatCard title="Balance" value={formatMoney(summary.balance)} icon={Wallet} tone="gold" />
-        <StatCard title="Movimientos" value={String(summary.movementCount)} icon={ReceiptText} />
-      </section>
+      {loading ? (
+        <SkeletonStats count={4} />
+      ) : (
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard title="Ingresos" value={formatMoney(summary.income)} icon={ArrowUpCircle} />
+          <StatCard title="Gastos" value={formatMoney(summary.expenses)} icon={ArrowDownCircle} tone="coral" />
+          <StatCard title="Balance" value={formatMoney(summary.balance)} icon={Wallet} tone="gold" />
+          <StatCard title="Movimientos" value={String(summary.movementCount)} icon={ReceiptText} />
+        </section>
+      )}
+
+      {loading ? (
+        <SkeletonList rows={1} itemHeight="h-80" />
+      ) : (
+        <RecurringExpensesPanel
+          items={recurringExpenses.items}
+          totalMonthlyEstimate={recurringExpenses.totalMonthlyEstimate}
+        />
+      )}
 
       {loading ? (
         <div className="grid gap-4 xl:grid-cols-2">
-          <div className="h-80 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
-          <div className="h-80 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
+          <SkeletonList rows={1} itemHeight="h-80" />
+          <SkeletonList rows={1} itemHeight="h-80" />
         </div>
       ) : movements.length ? (
         <>
-          <section className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
-            <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold">Gastos por categoria</h3>
-                <p className="text-sm text-muted dark:text-slate-400">{currentPeriod}</p>
+          <Suspense
+            fallback={
+              <div className="grid gap-4 xl:grid-cols-2">
+                <SkeletonList rows={1} itemHeight="h-80" />
+                <SkeletonList rows={1} itemHeight="h-80" />
               </div>
-              {expenseCategories.length ? (
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={expenseCategories} dataKey="expenses" nameKey="name" innerRadius={58} outerRadius={92}>
-                        {expenseCategories.map((item) => (
-                          <Cell key={item.id} fill={item.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => formatMoney(Number(value))} />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <EmptyState title="Sin gastos" detail="No hay gastos en el periodo seleccionado." />
-              )}
-            </article>
-
-            <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold">Ingresos vs gastos por mes</h3>
-                <p className="text-sm text-muted dark:text-slate-400">Agrupado por periodo mensual.</p>
-              </div>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="name" />
-                    <YAxis tickFormatter={(value) => `${Number(value) / 1000}k`} />
-                    <Tooltip formatter={(value) => formatMoney(Number(value))} />
-                    <Legend />
-                    <Bar dataKey="income" name="Ingresos" fill="#198c7c" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="expenses" name="Gastos" fill="#ee6c4d" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </article>
-          </section>
+            }
+          >
+            <ReportsCharts
+              expenseCategories={expenseCategories}
+              monthlyData={monthlyData}
+              currentPeriod={currentPeriod}
+            />
+          </Suspense>
 
           <section className="grid gap-4 xl:grid-cols-2">
             <ReportTable

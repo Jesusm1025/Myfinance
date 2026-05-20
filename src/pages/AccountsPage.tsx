@@ -3,7 +3,9 @@ import type { FormEvent } from 'react'
 import { ArrowRightLeft, Edit2, Landmark, LoaderCircle, Save, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { EmptyState } from '../components/EmptyState'
+import { SkeletonList, SkeletonStats } from '../components/Skeleton'
 import { StatusMessage } from '../components/StatusMessage'
 import { accountsChangedEvent, movementsChangedEvent } from '../events/financeEvents'
 import {
@@ -46,6 +48,7 @@ const initialTransfer: TransferFormValues = {
 
 export function AccountsPage() {
   const { user } = useAuth()
+  const { confirm, ConfirmDialog } = useConfirmDialog()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [transfers, setTransfers] = useState<AccountTransfer[]>([])
   const [balanceInputs, setBalanceInputs] = useState<ReturnType<typeof buildAccountBalances>>([])
@@ -143,7 +146,14 @@ export function AccountsPage() {
   }
 
   async function handleDeleteAccount(account: Account) {
-    if (!user || !window.confirm(`Eliminar cuenta "${account.name}"?`)) return
+    if (!user) return
+    const confirmed = await confirm({
+      title: 'Eliminar cuenta',
+      description: `Eliminar cuenta "${account.name}"? Si tiene movimientos asociados, la app evitara inconsistencias segun las reglas actuales.`,
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!confirmed) return
     setError('')
     setSuccess('')
     try {
@@ -156,7 +166,14 @@ export function AccountsPage() {
   }
 
   async function handleDeleteTransfer(transfer: AccountTransfer) {
-    if (!user || !window.confirm('Eliminar esta transferencia?')) return
+    if (!user) return
+    const confirmed = await confirm({
+      title: 'Eliminar transferencia',
+      description: 'Eliminar esta transferencia? Esta accion no se puede deshacer.',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!confirmed) return
     setError('')
     setSuccess('')
     try {
@@ -190,7 +207,9 @@ export function AccountsPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <>
+      <ConfirmDialog />
+      <div className="space-y-5">
       <div>
         <p className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-100">
           Cuentas y bolsillos
@@ -203,24 +222,28 @@ export function AccountsPage() {
       {error ? <StatusMessage message={error} /> : null}
       {success ? <StatusMessage message={success} variant="success" /> : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5 xl:col-span-2">
-          <p className="text-sm text-muted dark:text-slate-400">Balance total</p>
-          <p className="mt-2 text-3xl font-semibold tracking-normal text-ink dark:text-white">
-            {formatMoney(totalBalance)}
-          </p>
-        </article>
-        <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-          <p className="text-sm text-muted dark:text-slate-400">Cuentas</p>
-          <p className="mt-2 text-3xl font-semibold tracking-normal text-ink dark:text-white">{accounts.length}</p>
-        </article>
-        <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-          <p className="text-sm text-muted dark:text-slate-400">Transferencias</p>
-          <p className="mt-2 text-3xl font-semibold tracking-normal text-ink dark:text-white">{transfers.length}</p>
-        </article>
-      </section>
+      {loading ? (
+        <SkeletonStats count={3} />
+      ) : (
+        <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <article className="col-span-2 rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5 xl:col-span-2">
+            <p className="text-sm text-muted dark:text-slate-400">Balance total</p>
+            <p className="mt-2 text-3xl font-semibold tracking-normal text-ink dark:text-white">
+              {formatMoney(totalBalance)}
+            </p>
+          </article>
+          <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+            <p className="text-sm text-muted dark:text-slate-400">Cuentas</p>
+            <p className="mt-2 text-3xl font-semibold tracking-normal text-ink dark:text-white">{accounts.length}</p>
+          </article>
+          <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+            <p className="text-sm text-muted dark:text-slate-400">Transferencias</p>
+            <p className="mt-2 text-3xl font-semibold tracking-normal text-ink dark:text-white">{transfers.length}</p>
+          </article>
+        </section>
+      )}
 
-      <section className="grid gap-5 xl:grid-cols-[380px_1fr]">
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
         <div className="space-y-5">
           <AccountForm
             values={accountValues}
@@ -251,10 +274,8 @@ export function AccountsPage() {
               <h3 className="text-lg font-semibold">Balance por cuenta</h3>
             </div>
             {loading ? (
-              <div className="space-y-3 p-5">
-                {[1, 2, 3].map((item) => (
-                  <div key={item} className="h-20 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
-                ))}
+              <div className="p-5">
+                <SkeletonList rows={3} itemHeight="h-20" />
               </div>
             ) : balanceInputs.length ? (
               <div className="grid gap-3 p-4 sm:p-5 lg:grid-cols-2">
@@ -311,7 +332,8 @@ export function AccountsPage() {
           />
         </div>
       </section>
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -340,8 +362,8 @@ function AccountForm({
         </div>
       </div>
 
-      <form className="mt-5 space-y-4" onSubmit={onSubmit}>
-        <label className="block">
+      <form className="mt-5 grid grid-cols-2 gap-3 sm:block sm:space-y-4" onSubmit={onSubmit}>
+        <label className="col-span-2 block">
           <span className={labelClass}>Nombre</span>
           <input
             required
@@ -376,16 +398,16 @@ function AccountForm({
             placeholder="0.00"
           />
         </label>
-        <div>
+        <div className="col-span-2">
           <span className={labelClass}>Color</span>
-          <div className="mt-2 grid grid-cols-8 gap-2">
+          <div className="mt-2 grid grid-cols-8 gap-1.5 sm:gap-2">
             {swatches.map((color) => (
               <button
                 key={color}
                 type="button"
                 onClick={() => onChange({ ...values, color })}
                 className={clsx(
-                  'h-9 rounded-lg border-2',
+                  'h-8 rounded-lg border-2 sm:h-9',
                   values.color === color ? 'border-ink dark:border-white' : 'border-transparent',
                 )}
                 style={{ backgroundColor: color }}
@@ -394,7 +416,7 @@ function AccountForm({
             ))}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="fixed inset-x-4 bottom-24 z-30 col-span-2 flex gap-2 rounded-lg bg-white/95 py-2 backdrop-blur dark:bg-slate-900/95 sm:static sm:inset-auto sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
           <button
             type="submit"
             disabled={submitting}
@@ -513,7 +535,7 @@ function TransferForm({
             placeholder="Detalle opcional"
           />
         </label>
-        <div className="flex gap-2">
+        <div className="fixed inset-x-4 bottom-24 z-30 flex gap-2 rounded-lg bg-white/95 py-2 backdrop-blur dark:bg-slate-900/95 sm:static sm:inset-auto sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
           <button
             type="submit"
             disabled={submitting || accounts.length < 2}

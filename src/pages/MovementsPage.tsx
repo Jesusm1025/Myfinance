@@ -3,7 +3,9 @@ import type { FormEvent } from 'react'
 import { Edit2, Filter, LoaderCircle, Plus, Save, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { EmptyState } from '../components/EmptyState'
+import { SkeletonStats, SkeletonTable } from '../components/Skeleton'
 import { StatusMessage } from '../components/StatusMessage'
 import { accountsChangedEvent, categoriesChangedEvent, movementsChangedEvent } from '../events/financeEvents'
 import {
@@ -49,6 +51,7 @@ const initialFilters: MovementFilters = {
 
 export function MovementsPage() {
   const { user } = useAuth()
+  const { confirm, ConfirmDialog } = useConfirmDialog()
   const [movements, setMovements] = useState<Movement[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -146,7 +149,14 @@ export function MovementsPage() {
   }
 
   async function handleDelete(movement: Movement) {
-    if (!user || !window.confirm('Eliminar este movimiento?')) return
+    if (!user) return
+    const confirmed = await confirm({
+      title: 'Eliminar movimiento',
+      description: 'Este movimiento se eliminara de tu historial. Esta accion no se puede deshacer.',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!confirmed) return
     setError('')
     setSuccess('')
     try {
@@ -172,7 +182,9 @@ export function MovementsPage() {
   }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[400px_1fr]">
+    <>
+      <ConfirmDialog />
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
       <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
         <div className="flex items-center gap-3">
           <div className="rounded-lg bg-brand-50 p-2 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100">
@@ -296,7 +308,7 @@ export function MovementsPage() {
             />
           </label>
 
-          <div className="flex gap-2">
+          <div className="fixed inset-x-4 bottom-24 z-30 flex gap-2 rounded-lg bg-white/95 py-2 backdrop-blur dark:bg-slate-900/95 sm:static sm:inset-auto sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
             <button
               type="submit"
               disabled={submitting}
@@ -400,24 +412,24 @@ export function MovementsPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-line bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-sm text-muted dark:text-slate-400">Ingresos filtrados</p>
-            <p className="mt-1 text-xl font-semibold text-brand-700 dark:text-brand-100">{formatMoney(totals.income)}</p>
+        {loading ? (
+          <SkeletonStats count={2} />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-line bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+              <p className="text-sm text-muted dark:text-slate-400">Ingresos filtrados</p>
+              <p className="mt-1 text-xl font-semibold text-brand-700 dark:text-brand-100">{formatMoney(totals.income)}</p>
+            </div>
+            <div className="rounded-lg border border-line bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+              <p className="text-sm text-muted dark:text-slate-400">Gastos filtrados</p>
+              <p className="mt-1 text-xl font-semibold text-coral-600 dark:text-coral-400">{formatMoney(totals.expenses)}</p>
+            </div>
           </div>
-          <div className="rounded-lg border border-line bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-sm text-muted dark:text-slate-400">Gastos filtrados</p>
-            <p className="mt-1 text-xl font-semibold text-coral-600 dark:text-coral-400">{formatMoney(totals.expenses)}</p>
-          </div>
-        </div>
+        )}
 
         <div className="rounded-lg border border-line bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
           {loading ? (
-            <div className="space-y-3 p-5">
-              {[1, 2, 3].map((item) => (
-                <div key={item} className="h-20 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
-              ))}
-            </div>
+            <SkeletonTable rows={4} />
           ) : movements.length ? (
             <>
               <div className="divide-y divide-line dark:divide-slate-800 md:hidden">
@@ -572,6 +584,7 @@ export function MovementsPage() {
           )}
         </div>
       </section>
-    </div>
+      </div>
+    </>
   )
 }

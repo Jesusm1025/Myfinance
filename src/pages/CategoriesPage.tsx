@@ -25,7 +25,9 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { EmptyState } from '../components/EmptyState'
+import { SkeletonList } from '../components/Skeleton'
 import { StatusMessage } from '../components/StatusMessage'
 import { categoriesChangedEvent } from '../events/financeEvents'
 import {
@@ -103,6 +105,7 @@ function getIcon(icon?: string | null) {
 
 export function CategoriesPage() {
   const { user } = useAuth()
+  const { confirm, ConfirmDialog } = useConfirmDialog()
   const [categories, setCategories] = useState<Category[]>([])
   const [values, setValues] = useState<CategoryFormValues>(initialValues)
   const [loading, setLoading] = useState(true)
@@ -172,7 +175,13 @@ export function CategoriesPage() {
           ? `La categoria "${category.name}" tiene ${movementCount} movimiento(s) asociados. Si la eliminas, esos movimientos quedaran sin categoria, pero no se borraran. Deseas continuar?`
           : `Eliminar categoria "${category.name}"?`
 
-      if (!window.confirm(message)) return
+      const confirmed = await confirm({
+        title: movementCount > 0 ? 'Eliminar categoria en uso' : 'Eliminar categoria',
+        description: message,
+        confirmLabel: 'Eliminar',
+        variant: 'danger',
+      })
+      if (!confirmed) return
 
       await deleteCategory(user.id, category.id)
       setSuccess('Categoria eliminada correctamente.')
@@ -193,7 +202,9 @@ export function CategoriesPage() {
   }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[390px_1fr]">
+    <>
+      <ConfirmDialog />
+      <div className="grid gap-5 xl:grid-cols-[390px_1fr]">
       <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
         <div className="flex items-center gap-3">
           <div className="rounded-lg bg-brand-50 p-2 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100">
@@ -299,7 +310,7 @@ export function CategoriesPage() {
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="fixed inset-x-4 bottom-24 z-30 flex gap-2 rounded-lg bg-white/95 py-2 backdrop-blur dark:bg-slate-900/95 sm:static sm:inset-auto sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
             <button
               type="submit"
               disabled={submitting}
@@ -331,11 +342,7 @@ export function CategoriesPage() {
         </div>
 
         {loading ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {[1, 2, 3, 4].map((item) => (
-              <div key={item} className="h-24 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
-            ))}
-          </div>
+          <SkeletonList rows={4} itemHeight="h-24" />
         ) : categories.length ? (
           <div className="grid gap-5">
             {(['expense', 'income'] as const).map((type) => (
@@ -400,6 +407,7 @@ export function CategoriesPage() {
           <EmptyState title="Aun no hay categorias" detail="Crea tus categorias para empezar a clasificar movimientos." />
         )}
       </section>
-    </div>
+      </div>
+    </>
   )
 }

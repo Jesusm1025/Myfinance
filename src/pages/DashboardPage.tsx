@@ -25,12 +25,17 @@ import {
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
 import { EmptyState } from '../components/EmptyState'
+import { RecurringExpensesPanel } from '../components/RecurringExpensesPanel'
+import { SkeletonList, SkeletonStats } from '../components/Skeleton'
+import { SmartAlertsPanel } from '../components/SmartAlertsPanel'
 import { StatCard } from '../components/StatCard'
 import { StatusMessage } from '../components/StatusMessage'
-import { movementsChangedEvent } from '../events/financeEvents'
-import { listAllMovements, listMovements } from '../services/accounting'
-import type { Movement, MovementFilters } from '../types/finance'
+import { budgetsChangedEvent, categoriesChangedEvent, debtsChangedEvent, movementsChangedEvent } from '../events/financeEvents'
+import { listAllMovements, listCategories, listDebtInstallments, listDebts, listMonthlyBudgets, listMovements } from '../services/accounting'
+import type { Category, Debt, DebtInstallment, MonthlyBudget, Movement, MovementFilters } from '../types/finance'
 import { currentMonthValue, formatDate, formatMoney, monthRange, paymentMethodLabel } from '../utils/format'
+import { detectRecurringExpenses } from '../utils/recurringExpenses'
+import { buildBudgetSmartAlerts, buildDebtSmartAlerts, sortSmartAlerts } from '../utils/smartAlerts'
 
 const emptyFilters: MovementFilters = {
   month: currentMonthValue(),
@@ -57,6 +62,10 @@ export function DashboardPage() {
   const [month, setMonth] = useState(currentMonthValue())
   const [monthlyMovements, setMonthlyMovements] = useState<Movement[]>([])
   const [allMovements, setAllMovements] = useState<Movement[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [budgets, setBudgets] = useState<MonthlyBudget[]>([])
+  const [debts, setDebts] = useState<Debt[]>([])
+  const [installments, setInstallments] = useState<DebtInstallment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -68,10 +77,18 @@ export function DashboardPage() {
     Promise.all([
       listMovements(user.id, { ...emptyFilters, month }),
       listAllMovements(user.id),
+      listCategories(user.id).catch(() => [] as Category[]),
+      listMonthlyBudgets(user.id, month).catch(() => [] as MonthlyBudget[]),
+      listDebts(user.id).catch(() => [] as Debt[]),
+      listDebtInstallments(user.id).catch(() => [] as DebtInstallment[]),
     ])
-      .then(([monthData, allData]) => {
+      .then(([monthData, allData, categoryData, budgetData, debtData, installmentData]) => {
         setMonthlyMovements(monthData)
         setAllMovements(allData)
+        setCategories(categoryData)
+        setBudgets(budgetData)
+        setDebts(debtData)
+        setInstallments(installmentData)
       })
       .catch((loadError) => {
         setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el dashboard.')
@@ -85,8 +102,14 @@ export function DashboardPage() {
 
   useEffect(() => {
     window.addEventListener(movementsChangedEvent, loadDashboard)
+    window.addEventListener(categoriesChangedEvent, loadDashboard)
+    window.addEventListener(budgetsChangedEvent, loadDashboard)
+    window.addEventListener(debtsChangedEvent, loadDashboard)
     return () => {
       window.removeEventListener(movementsChangedEvent, loadDashboard)
+      window.removeEventListener(categoriesChangedEvent, loadDashboard)
+      window.removeEventListener(budgetsChangedEvent, loadDashboard)
+      window.removeEventListener(debtsChangedEvent, loadDashboard)
     }
   }, [loadDashboard])
 
@@ -156,6 +179,26 @@ export function DashboardPage() {
   }, [allMovements, month, monthlySummary.expenses, monthlySummary.income])
 
   const expensesBeatIncome = monthlySummary.expenses > monthlySummary.income
+  const categorySpend = useMemo(() => {
+    const totals = new Map<string, number>()
+    monthlyMovements
+      .filter((movement) => movement.type === 'expense' && movement.category_id)
+      .forEach((movement) => {
+        totals.set(String(movement.category_id), (totals.get(String(movement.category_id)) ?? 0) + Number(movement.amount))
+      })
+    return Array.from(totals.entries()).map(([categoryId, spent]) => ({ categoryId, spent }))
+  }, [monthlyMovements])
+  const smartAlerts = useMemo(() => {
+    const budgetAlerts = buildBudgetSmartAlerts({
+      budgets,
+      categories,
+      categorySpend,
+      totalExpenses: monthlySummary.expenses,
+    })
+    const debtAlerts = buildDebtSmartAlerts({ debts, installments })
+    return sortSmartAlerts([...budgetAlerts, ...debtAlerts]).slice(0, 5)
+  }, [budgets, categories, categorySpend, debts, installments, monthlySummary.expenses])
+  const recurringExpenses = useMemo(() => detectRecurringExpenses(allMovements), [allMovements])
 
   return (
     <div className="space-y-5">
@@ -186,19 +229,32 @@ export function DashboardPage() {
           <span>Alerta: tus gastos del mes superan tus ingresos por {formatMoney(monthlySummary.expenses - monthlySummary.income)}.</span>
         </div>
       ) : null}
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard title="Ingresos del mes" value={formatMoney(monthlySummary.income)} icon={ArrowUpCircle} />
-        <StatCard title="Gastos del mes" value={formatMoney(monthlySummary.expenses)} icon={ArrowDownCircle} tone="coral" />
-        <StatCard title="Balance mensual" value={formatMoney(monthlySummary.balance)} icon={Wallet} tone="gold" />
-        <StatCard title="Balance general" value={formatMoney(generalBalance)} icon={TrendingUp} />
-        <StatCard
-          title="Mayor gasto"
-          value={topExpenseCategory ? topExpenseCategory.name : 'Sin gastos'}
-          icon={Tags}
-          tone="coral"
+      {!loading ? <SmartAlertsPanel alerts={smartAlerts} compact /> : null}
+      {!loading ? (
+        <RecurringExpensesPanel
+          items={recurringExpenses.items}
+          totalMonthlyEstimate={recurringExpenses.totalMonthlyEstimate}
+          compact
+          maxItems={5}
         />
-      </section>
+      ) : null}
+
+      {loading ? (
+        <SkeletonStats count={5} />
+      ) : (
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <StatCard title="Ingresos del mes" value={formatMoney(monthlySummary.income)} icon={ArrowUpCircle} />
+          <StatCard title="Gastos del mes" value={formatMoney(monthlySummary.expenses)} icon={ArrowDownCircle} tone="coral" />
+          <StatCard title="Balance mensual" value={formatMoney(monthlySummary.balance)} icon={Wallet} tone="gold" />
+          <StatCard title="Balance general" value={formatMoney(generalBalance)} icon={TrendingUp} />
+          <StatCard
+            title="Mayor gasto"
+            value={topExpenseCategory ? topExpenseCategory.name : 'Sin gastos'}
+            icon={Tags}
+            tone="coral"
+          />
+        </section>
+      )}
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
         <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
@@ -209,7 +265,7 @@ export function DashboardPage() {
             </p>
           </div>
           {loading ? (
-            <div className="h-72 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
+            <SkeletonList rows={1} itemHeight="h-72" />
           ) : expensesByCategory.length ? (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -235,7 +291,7 @@ export function DashboardPage() {
             <p className="text-sm text-muted dark:text-slate-400">Hasta los ultimos 12 meses con movimientos</p>
           </div>
           {loading ? (
-            <div className="h-72 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
+            <SkeletonList rows={1} itemHeight="h-72" />
           ) : incomeVsExpensesByMonth.length ? (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -285,10 +341,8 @@ export function DashboardPage() {
             <p className="text-sm text-muted dark:text-slate-400">Ordenados del mas reciente al mas antiguo</p>
           </div>
           {loading ? (
-            <div className="space-y-3 p-4 sm:p-5">
-              {[1, 2, 3].map((item) => (
-                <div key={item} className="h-16 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
-              ))}
+            <div className="p-4 sm:p-5">
+              <SkeletonList rows={3} itemHeight="h-16" />
             </div>
           ) : latestMovements.length ? (
             <div className="divide-y divide-line dark:divide-slate-800">

@@ -3,6 +3,7 @@ import { BanknoteArrowDown, CheckCircle2, ClipboardPaste, LoaderCircle, MailSear
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
 import { EmptyState } from '../components/EmptyState'
+import { SkeletonList } from '../components/Skeleton'
 import { StatusMessage } from '../components/StatusMessage'
 import { accountsChangedEvent, categoriesChangedEvent } from '../events/financeEvents'
 import { bankMovementKindLabel, parseBankEmail } from '../lib/bankEmailParser'
@@ -301,25 +302,29 @@ export function ImportBankEmailsPage() {
           ) : null}
 
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {authorizedBanks.map((bank) => (
-              <label
-                key={bank.id}
-                className={clsx(
-                  'flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium transition',
-                  authorizedBankIds.includes(bank.id)
-                    ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-100'
-                    : 'border-line bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800',
-                )}
-              >
-                <input
-                  type="checkbox"
-                  checked={authorizedBankIds.includes(bank.id)}
-                  onChange={() => toggleAuthorizedBank(bank.id)}
-                  className="h-4 w-4 accent-brand-600"
-                />
-                {bank.name}
-              </label>
-            ))}
+            {loadingCatalogs ? (
+              <SkeletonList rows={4} itemHeight="h-11" />
+            ) : (
+              authorizedBanks.map((bank) => (
+                <label
+                  key={bank.id}
+                  className={clsx(
+                    'flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium transition',
+                    authorizedBankIds.includes(bank.id)
+                      ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-100'
+                      : 'border-line bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={authorizedBankIds.includes(bank.id)}
+                    onChange={() => toggleAuthorizedBank(bank.id)}
+                    className="h-4 w-4 accent-brand-600"
+                  />
+                  {bank.name}
+                </label>
+              ))
+            )}
           </div>
 
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">

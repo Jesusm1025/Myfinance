@@ -1,6 +1,4 @@
-import { jsPDF } from 'jspdf'
-import autoTable from 'jspdf-autotable'
-import writeXlsxFile, { type SheetData } from 'write-excel-file/browser'
+import type { SheetData } from 'write-excel-file/browser'
 import type { Movement } from '../types/finance'
 import { formatDate, formatMoney, movementTypeLabel, paymentMethodLabel } from './format'
 import type { CategoryReportRow, PaymentMethodReportRow, ReportSummary } from './reports'
@@ -77,6 +75,7 @@ export function exportMovementsToCsv(payload: ExportPayload) {
 }
 
 export async function exportReportToExcel(payload: ExportPayload) {
+  const { default: writeXlsxFile } = await import('write-excel-file/browser')
   const movementsSheet = worksheetData('Movimientos', movementRows(payload.movements))
   const summarySheet = worksheetData('Resumen', summaryRows(payload))
   const categoriesSheet = worksheetData(
@@ -105,7 +104,11 @@ export async function exportReportToExcel(payload: ExportPayload) {
   )
 }
 
-export function exportSummaryToPdf(payload: ExportPayload) {
+export async function exportSummaryToPdf(payload: ExportPayload) {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
   const doc = new jsPDF()
   doc.setFontSize(16)
   doc.text('Mi Contabilidad Personal', 14, 18)

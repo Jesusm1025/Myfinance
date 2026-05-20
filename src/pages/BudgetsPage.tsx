@@ -3,6 +3,7 @@ import { CalendarRange, PiggyBank } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { BudgetPanel } from '../components/BudgetPanel'
 import { EmptyState } from '../components/EmptyState'
+import { SkeletonList } from '../components/Skeleton'
 import { StatusMessage } from '../components/StatusMessage'
 import { budgetsChangedEvent, categoriesChangedEvent, movementsChangedEvent } from '../events/financeEvents'
 import { listCategories, listMonthlyBudgets, listMovements } from '../services/accounting'
@@ -110,16 +111,13 @@ export function BudgetsPage() {
       {loading ? (
         <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
+            <SkeletonList rows={1} itemHeight="h-10 w-10" />
             <div className="space-y-2">
-              <div className="h-4 w-40 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
-              <div className="h-3 w-64 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+              <SkeletonList rows={2} itemHeight="h-4 w-40" />
             </div>
           </div>
-          <div className="mt-5 grid gap-3">
-            {[1, 2, 3].map((item) => (
-              <div key={item} className="h-28 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
-            ))}
+          <div className="mt-5">
+            <SkeletonList rows={3} itemHeight="h-28" />
           </div>
         </section>
       ) : user ? (

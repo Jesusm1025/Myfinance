@@ -1,23 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { AlertTriangle, CalendarClock, CheckCircle2, CircleDollarSign, ClipboardList, CreditCard, Edit2, GraduationCap, History, LoaderCircle, Plus, Save, ShieldCheck, TrendingUp, Trash2, WalletCards, X } from 'lucide-react'
+import { CalendarClock, CheckCircle2, CircleDollarSign, ClipboardList, Edit2, History, LoaderCircle, Plus, Save, ShieldCheck, TrendingUp, Trash2, WalletCards, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
+import { useConfirmDialog } from '../components/ConfirmDialog'
+import { CreditCardDebtDetails } from '../components/debts/CreditCardDebtDetails'
+import { DebtInstallmentsPanel } from '../components/debts/DebtInstallmentsPanel'
+import { DebtMetric } from '../components/debts/DebtMetric'
 import { EmptyState } from '../components/EmptyState'
+import { SkeletonList, SkeletonStats } from '../components/Skeleton'
+import { SmartAlertsPanel } from '../components/SmartAlertsPanel'
 import { StatCard } from '../components/StatCard'
 import { StatusMessage } from '../components/StatusMessage'
 import { debtsChangedEvent } from '../events/financeEvents'
 import { deleteDebt, listAccounts, listDebtInstallments, listDebtPayments, listDebts, listDebtSubaccounts, payDebtInstallment, registerDebtPayment, saveDebt } from '../services/accounting'
 import type { Account, Debt, DebtFormValues, DebtInstallment, DebtPayment, DebtPaymentFormValues, DebtStatus, DebtSubaccount, DebtSubaccountFormValues } from '../types/finance'
 import {
-  creditCardDebtStatusLabel,
   debtFrequencyLabel,
-  debtInstallmentStatusLabel,
   debtStatusLabel,
   debtTypeLabel,
   formatDate,
   formatMoney,
   paymentMethodLabel,
 } from '../utils/format'
+import { buildDebtSmartAlerts, sortSmartAlerts } from '../utils/smartAlerts'
 
 const fieldClass =
   'w-full rounded-lg border border-line bg-white px-3 py-2.5 text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-brand-500/20'
@@ -79,6 +84,7 @@ const dueSoonDays = 7
 
 export function DebtsPage() {
   const { user } = useAuth()
+  const { confirm, ConfirmDialog } = useConfirmDialog()
   const [debts, setDebts] = useState<Debt[]>([])
   const [payments, setPayments] = useState<DebtPayment[]>([])
   const [subaccounts, setSubaccounts] = useState<DebtSubaccount[]>([])
@@ -215,6 +221,10 @@ export function DebtsPage() {
     })
     return rows
   }, [installments])
+  const debtSmartAlerts = useMemo(
+    () => sortSmartAlerts(buildDebtSmartAlerts({ debts, installments })),
+    [debts, installments],
+  )
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -319,7 +329,14 @@ export function DebtsPage() {
   }
 
   async function handleDelete(debt: Debt) {
-    if (!user || !window.confirm(`Eliminar la deuda "${debt.name}"? Esta accion no se puede deshacer.`)) return
+    if (!user) return
+    const confirmed = await confirm({
+      title: 'Eliminar deuda',
+      description: `Eliminar la deuda "${debt.name}"? Esta accion no se puede deshacer.`,
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!confirmed) return
     setError('')
     setSuccess('')
 
@@ -333,7 +350,13 @@ export function DebtsPage() {
   }
 
   async function markAsPaid(debt: Debt) {
-    if (!user || !window.confirm(`Marcar "${debt.name}" como pagada? El saldo pendiente quedara en 0.`)) return
+    if (!user) return
+    const confirmed = await confirm({
+      title: 'Marcar deuda como pagada',
+      description: `Marcar "${debt.name}" como pagada? El saldo pendiente quedara en 0.`,
+      confirmLabel: 'Continuar',
+    })
+    if (!confirmed) return
     setError('')
     setSuccess('')
 
@@ -352,7 +375,12 @@ export function DebtsPage() {
 
   async function handlePayInstallment(installment: DebtInstallment) {
     if (!user || installment.status === 'paid') return
-    if (!window.confirm(`Marcar como pagada la cuota de ${formatMoney(Number(installment.amount))}?`)) return
+    const confirmed = await confirm({
+      title: 'Pagar cuota',
+      description: `Marcar como pagada la cuota de ${formatMoney(Number(installment.amount))}?`,
+      confirmLabel: 'Confirmar',
+    })
+    if (!confirmed) return
 
     setPayingInstallmentId(installment.id)
     setError('')
@@ -419,7 +447,9 @@ export function DebtsPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <>
+      <ConfirmDialog />
+      <div className="space-y-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-100">
@@ -448,28 +478,40 @@ export function DebtsPage() {
       {error ? <StatusMessage message={error} /> : null}
       {success ? <StatusMessage message={success} variant="success" /> : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Total deuda inicial" value={formatMoney(summary.totalInitial)} icon={ClipboardList} />
-        <StatCard title="Total pendiente" value={formatMoney(summary.pending)} icon={CircleDollarSign} tone="coral" />
-        <StatCard title="Total pagado" value={formatMoney(summary.paid)} icon={CheckCircle2} />
-        <StatCard title="Deudas activas" value={String(summary.activeCount)} icon={ClipboardList} />
-        <StatCard title="Deudas pagadas" value={String(summary.paidCount)} icon={ShieldCheck} />
-        <StatCard
-          title="Mayor saldo pendiente"
-          value={summary.highestPendingDebt ? formatMoney(Number(summary.highestPendingDebt.outstanding_balance)) : formatMoney(0)}
-          icon={TrendingUp}
-          tone="coral"
-        />
-        <StatCard
-          title="Proxima por vencer"
-          value={summary.nextDueDebt?.due_date ? `${summary.nextDueDebt.name} - ${formatDate(summary.nextDueDebt.due_date)}` : 'Sin fecha'}
-          icon={CalendarClock}
-          tone="gold"
-        />
-        <StatCard title="Deudas vencidas" value={String(summary.overdueCount)} icon={CalendarClock} tone="coral" />
-      </section>
+      {loading ? (
+        <SkeletonStats count={8} />
+      ) : (
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard title="Total deuda inicial" value={formatMoney(summary.totalInitial)} icon={ClipboardList} />
+          <StatCard title="Total pendiente" value={formatMoney(summary.pending)} icon={CircleDollarSign} tone="coral" />
+          <StatCard title="Total pagado" value={formatMoney(summary.paid)} icon={CheckCircle2} />
+          <StatCard title="Deudas activas" value={String(summary.activeCount)} icon={ClipboardList} />
+          <StatCard title="Deudas pagadas" value={String(summary.paidCount)} icon={ShieldCheck} />
+          <StatCard
+            title="Mayor saldo pendiente"
+            value={summary.highestPendingDebt ? formatMoney(Number(summary.highestPendingDebt.outstanding_balance)) : formatMoney(0)}
+            icon={TrendingUp}
+            tone="coral"
+          />
+          <StatCard
+            title="Proxima por vencer"
+            value={summary.nextDueDebt?.due_date ? `${summary.nextDueDebt.name} - ${formatDate(summary.nextDueDebt.due_date)}` : 'Sin fecha'}
+            icon={CalendarClock}
+            tone="gold"
+          />
+          <StatCard title="Deudas vencidas" value={String(summary.overdueCount)} icon={CalendarClock} tone="coral" />
+        </section>
+      )}
 
-      <section className="rounded-lg border border-line bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      {loading ? (
+        <section className="rounded-lg border border-line bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <SkeletonList rows={2} itemHeight="h-5" />
+          <div className="mt-4">
+            <SkeletonList rows={1} itemHeight="h-3" />
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-lg border border-line bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h3 className="text-lg font-semibold">Progreso general de pago</h3>
@@ -485,46 +527,18 @@ export function DebtsPage() {
             style={{ width: `${summary.paymentProgress}%` }}
           />
         </div>
-      </section>
+        </section>
+      )}
 
-      <section className="grid gap-3 lg:grid-cols-3">
-        <DebtAlertCard
-          icon={AlertTriangle}
-          title="Deudas vencidas"
-          tone="danger"
-          debts={summary.overdueDebts}
-          emptyText="No tienes deudas vencidas."
+      {loading ? (
+        <SkeletonList rows={3} itemHeight="h-36" />
+      ) : (
+        <SmartAlertsPanel
+          alerts={debtSmartAlerts}
+          title="Alertas inteligentes de deudas"
+          emptyText="No hay vencimientos, cuotas o pagos minimos urgentes."
         />
-        <DebtAlertCard
-          icon={CalendarClock}
-          title={`Vencen en ${dueSoonDays} dias`}
-          tone="warning"
-          debts={summary.dueSoonDebts}
-          emptyText="No hay vencimientos cercanos."
-        />
-        <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-coral-50 p-2 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400">
-              <TrendingUp className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="font-semibold">Mayor saldo pendiente</h3>
-              <p className="text-sm text-muted dark:text-slate-400">Referencia rapida para priorizar.</p>
-            </div>
-          </div>
-          {summary.highestPendingDebt ? (
-            <div className="mt-4 rounded-lg bg-slate-50 p-3 dark:bg-slate-950">
-              <p className="font-semibold text-ink dark:text-white">{summary.highestPendingDebt.name}</p>
-              <p className="mt-1 text-sm text-muted dark:text-slate-400">{summary.highestPendingDebt.creditor}</p>
-              <p className="mt-2 text-lg font-semibold text-coral-600 dark:text-coral-400">
-                {formatMoney(Number(summary.highestPendingDebt.outstanding_balance))}
-              </p>
-            </div>
-          ) : (
-            <p className="mt-4 text-sm text-muted dark:text-slate-400">No hay saldos pendientes.</p>
-          )}
-        </article>
-      </section>
+      )}
 
       {showForm ? (
         <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
@@ -1077,7 +1091,7 @@ export function DebtsPage() {
         </div>
 
         {loading ? (
-          <p className="text-sm text-muted dark:text-slate-400">Cargando deudas...</p>
+          <SkeletonList rows={4} itemHeight="h-36" />
         ) : visibleDebts.length ? (
           <div className="space-y-3">
             {visibleDebts.map((debt) => (
@@ -1391,7 +1405,8 @@ export function DebtsPage() {
           />
         )}
       </section>
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -1485,289 +1500,4 @@ function priorityTone(priority: DebtPriority) {
   if (priority === 'high') return 'bg-coral-50 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400'
   if (priority === 'medium') return 'bg-gold-50 text-gold-600 dark:bg-gold-500/15 dark:text-gold-400'
   return 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100'
-}
-
-function creditCardStatusTone(status: Debt['credit_card_status']) {
-  if (status === 'mora' || status === 'sobregirada') return 'bg-coral-50 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400'
-  if (status === 'vencida') return 'bg-gold-50 text-gold-600 dark:bg-gold-500/15 dark:text-gold-400'
-  return 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100'
-}
-
-const dopFormatter = new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' })
-const usdFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
-
-function formatDop(value: number) {
-  return dopFormatter.format(value)
-}
-
-function formatUsd(value: number) {
-  return usdFormatter.format(value)
-}
-
-function toNumber(value: number | null | undefined) {
-  return value === null || value === undefined ? 0 : Number(value)
-}
-
-function CreditCardDebtDetails({ debt, subaccounts }: { debt: Debt; subaccounts: DebtSubaccount[] }) {
-  const dopBalance = toNumber(debt.balance_dop ?? debt.used_balance ?? debt.outstanding_balance)
-  const usdBalance = toNumber(debt.balance_usd)
-  const dopLimit = toNumber(debt.credit_limit_dop ?? debt.credit_limit)
-  const usdLimit = toNumber(debt.credit_limit_usd)
-  const dopMinimum = toNumber(debt.minimum_payment_dop ?? debt.minimum_payment)
-  const usdMinimum = toNumber(debt.minimum_payment_usd)
-  const rate = toNumber(debt.usd_to_dop_rate)
-  const dopAvailable = dopLimit - dopBalance
-  const usdAvailable = usdLimit - usdBalance
-  const usdConverted = rate > 0 ? usdBalance * rate : null
-  const totalConsolidated = dopBalance + (usdConverted ?? 0)
-  const minimumTotal = dopMinimum + (rate > 0 ? usdMinimum * rate : 0)
-  const utilization = dopLimit + (rate > 0 ? usdLimit * rate : 0) > 0
-    ? Math.round((totalConsolidated / (dopLimit + (rate > 0 ? usdLimit * rate : 0))) * 100)
-    : null
-  const hasOverLimit = dopAvailable < 0 || usdAvailable < 0 || debt.credit_card_status === 'sobregirada'
-
-  return (
-    <section className="mt-4 overflow-hidden rounded-lg border border-line bg-white dark:border-slate-800 dark:bg-slate-950">
-      <div className={`p-4 ${hasOverLimit ? 'bg-coral-50 dark:bg-coral-500/10' : 'bg-brand-50 dark:bg-brand-500/10'}`}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`rounded-lg p-2 ${hasOverLimit ? 'bg-coral-100 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400' : 'bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100'}`}>
-              <CreditCard className="h-5 w-5" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-ink dark:text-white">
-                Tarjeta de credito{debt.card_last4 ? ` - ${debt.card_last4}` : ''}
-              </h4>
-              <p className="text-sm text-muted dark:text-slate-400">
-                Corte {debt.statement_date ? formatDate(debt.statement_date) : 'sin fecha'} - Pago limite {debt.due_date ? formatDate(debt.due_date) : 'sin fecha'}
-              </p>
-            </div>
-          </div>
-          <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${creditCardStatusTone(debt.credit_card_status)}`}>
-            {creditCardDebtStatusLabel(debt.credit_card_status)}
-          </span>
-        </div>
-
-        <div className="mt-4">
-          <div className="flex items-center justify-between text-xs font-medium text-muted dark:text-slate-400">
-            <span>Utilizacion consolidada</span>
-            <span>{utilization === null ? 'Sin limite' : `${utilization}%`}</span>
-          </div>
-          <div className="mt-2 h-3 overflow-hidden rounded-full bg-white/80 dark:bg-slate-800">
-            <div
-              className={`h-full rounded-full transition-all ${hasOverLimit ? 'bg-coral-500' : utilization !== null && utilization >= 80 ? 'bg-gold-500' : 'bg-brand-600'}`}
-              style={{ width: `${Math.min(100, utilization ?? 0)}%` }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {hasOverLimit ? (
-        <div className="border-t border-coral-200 bg-coral-50 px-4 py-3 text-sm font-medium text-coral-700 dark:border-coral-500/20 dark:bg-coral-500/10 dark:text-coral-300">
-          Esta tarjeta supera el limite disponible. Revisa el balance, pagos vencidos o posibles cargos por mora.
-        </div>
-      ) : null}
-
-      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
-        <DebtMetric label="Deuda consolidada" value={formatDop(totalConsolidated)} />
-        <DebtMetric label="USD convertido" value={usdConverted === null ? 'Agrega tasa USD' : formatDop(usdConverted)} />
-        <DebtMetric label="Pago minimo total" value={formatDop(minimumTotal)} />
-        <DebtMetric label="Tasa USD a DOP" value={rate > 0 ? String(rate) : 'Sin tasa'} />
-        <DebtMetric label="Balance DOP" value={formatDop(dopBalance)} />
-        <DebtMetric label="Disponible DOP" value={formatDop(dopAvailable)} />
-        <DebtMetric label="Balance USD" value={formatUsd(usdBalance)} />
-        <DebtMetric label="Disponible USD" value={formatUsd(usdAvailable)} />
-        <DebtMetric label="Pendiente ultimo corte" value={debt.statement_balance == null ? 'Sin dato' : formatMoney(Number(debt.statement_balance))} />
-        <DebtMetric label="Tasa de interes" value={debt.interest_rate == null ? 'Sin dato' : `${Number(debt.interest_rate)}%`} />
-      </div>
-
-      <div className="border-t border-line p-4 dark:border-slate-800">
-        <h5 className="text-sm font-semibold text-ink dark:text-white">Subcuentas relacionadas</h5>
-        {subaccounts.length ? (
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            {subaccounts.map((subaccount) => {
-              const limit = Number(subaccount.credit_limit)
-              const balance = Number(subaccount.balance)
-              const available = Number(subaccount.available)
-              const usage = limit > 0 ? Math.round((balance / limit) * 100) : null
-              const overLimit = available < 0
-              return (
-                <div key={subaccount.id} className="rounded-lg border border-line p-3 dark:border-slate-800">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-ink dark:text-white">{subaccount.name}</p>
-                      <p className={`text-xs font-medium ${overLimit ? 'text-coral-600 dark:text-coral-400' : 'text-muted dark:text-slate-400'}`}>
-                        Disponible {formatMoney(available)}
-                      </p>
-                    </div>
-                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${overLimit ? 'bg-coral-50 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400' : 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100'}`}>
-                      {usage === null ? 'Sin limite' : `${usage}%`}
-                    </span>
-                  </div>
-                  <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                    <DebtMetric label="Balance" value={formatMoney(balance)} />
-                    <DebtMetric label="Limite" value={formatMoney(limit)} />
-                  </dl>
-                  {usage !== null ? (
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                      <div
-                        className={`h-full rounded-full ${overLimit ? 'bg-coral-500' : usage >= 80 ? 'bg-gold-500' : 'bg-brand-600'}`}
-                        style={{ width: `${Math.min(100, usage)}%` }}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          <p className="mt-3 text-sm text-muted dark:text-slate-400">
-            Aun no hay subcuentas registradas para esta tarjeta.
-          </p>
-        )}
-      </div>
-    </section>
-  )
-}
-
-function DebtInstallmentsPanel({
-  installments,
-  payingInstallmentId,
-  onPay,
-}: {
-  installments: DebtInstallment[]
-  payingInstallmentId: string
-  onPay: (installment: DebtInstallment) => void
-}) {
-  const today = new Date().toISOString().slice(0, 10)
-  const total = installments.reduce((sum, installment) => sum + Number(installment.amount), 0)
-  const paid = installments
-    .filter((installment) => installment.status === 'paid')
-    .reduce((sum, installment) => sum + Number(installment.amount), 0)
-  const progress = total > 0 ? Math.round((paid / total) * 100) : 0
-
-  return (
-    <section className="mt-4 rounded-lg border border-line bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <GraduationCap className="h-4 w-4 text-brand-700 dark:text-brand-100" />
-          <div>
-            <h4 className="text-sm font-semibold text-ink dark:text-white">Cuotas asociadas</h4>
-            <p className="text-xs text-muted dark:text-slate-400">
-              {installments.length} cuota(s) - {formatMoney(paid)} pagados de {formatMoney(total)}
-            </p>
-          </div>
-        </div>
-        <p className="text-lg font-semibold text-brand-700 dark:text-brand-100">{progress}%</p>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-        <div className="h-full rounded-full bg-brand-600 dark:bg-brand-400" style={{ width: `${Math.min(100, progress)}%` }} />
-      </div>
-      <div className="mt-4 space-y-2">
-        {installments.map((installment) => {
-          const computedStatus = installment.status === 'pending' && installment.due_date && installment.due_date < today
-            ? 'overdue'
-            : installment.status
-          return (
-            <div
-              key={installment.id}
-              className="flex flex-col gap-3 rounded-lg border border-line bg-slate-50 p-3 text-sm dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold text-ink dark:text-white">{formatMoney(Number(installment.amount))}</p>
-                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${installmentStatusTone(computedStatus)}`}>
-                    {debtInstallmentStatusLabel(computedStatus)}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-muted dark:text-slate-400">{installment.description}</p>
-                <p className="mt-1 text-xs text-muted dark:text-slate-400">
-                  Vence: {installment.due_date ? formatDate(installment.due_date) : 'Sin fecha especifica'}
-                  {installment.paid_at ? ` - Pagada: ${formatDate(installment.paid_at)}` : ''}
-                </p>
-              </div>
-              {installment.status !== 'paid' ? (
-                <button
-                  type="button"
-                  onClick={() => onPay(installment)}
-                  disabled={payingInstallmentId === installment.id}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
-                >
-                  {payingInstallmentId === installment.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                  Pagar cuota
-                </button>
-              ) : null}
-            </div>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
-function installmentStatusTone(status: DebtInstallment['status']) {
-  if (status === 'paid') return 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100'
-  if (status === 'overdue') return 'bg-coral-50 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400'
-  return 'bg-gold-50 text-gold-600 dark:bg-gold-500/15 dark:text-gold-400'
-}
-
-function DebtAlertCard({
-  icon: Icon,
-  title,
-  tone,
-  debts,
-  emptyText,
-}: {
-  icon: typeof AlertTriangle
-  title: string
-  tone: 'danger' | 'warning'
-  debts: Debt[]
-  emptyText: string
-}) {
-  const tones = {
-    danger: 'bg-coral-50 text-coral-600 dark:bg-coral-500/15 dark:text-coral-400',
-    warning: 'bg-gold-50 text-gold-600 dark:bg-gold-500/15 dark:text-gold-400',
-  }
-
-  return (
-    <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-center gap-3">
-        <div className={`rounded-lg p-2 ${tones[tone]}`}>
-          <Icon className="h-5 w-5" />
-        </div>
-        <div>
-          <h3 className="font-semibold">{title}</h3>
-          <p className="text-sm text-muted dark:text-slate-400">{debts.length} deuda(s)</p>
-        </div>
-      </div>
-      {debts.length ? (
-        <div className="mt-4 space-y-2">
-          {debts.slice(0, 3).map((debt) => (
-            <div key={debt.id} className="rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-950">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-ink dark:text-white">{debt.name}</p>
-                  <p className="text-xs text-muted dark:text-slate-400">
-                    {debt.due_date ? formatDate(debt.due_date) : 'Sin fecha'}
-                  </p>
-                </div>
-                <p className="shrink-0 font-semibold">{formatMoney(Number(debt.outstanding_balance))}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-4 text-sm text-muted dark:text-slate-400">{emptyText}</p>
-      )}
-    </article>
-  )
-}
-
-function DebtMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-muted dark:text-slate-400">{label}</dt>
-      <dd className="mt-1 font-semibold text-ink dark:text-white">{value}</dd>
-    </div>
-  )
 }
