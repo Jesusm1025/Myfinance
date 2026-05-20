@@ -3,14 +3,25 @@ import { Plus, Target, TrendingUp, Wallet } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { EmptyState } from '../components/EmptyState'
 import { SavingsGoalCard, savingsGoalProgress } from '../components/SavingsGoalCard'
+import { SavingsGoalContributionForm } from '../components/SavingsGoalContributionForm'
+import { SavingsGoalContributionsPanel } from '../components/SavingsGoalContributionsPanel'
 import { SavingsGoalForm } from '../components/SavingsGoalForm'
 import { SkeletonList, SkeletonStats } from '../components/Skeleton'
 import { StatCard } from '../components/StatCard'
 import { StatusMessage } from '../components/StatusMessage'
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { accountsChangedEvent, savingsGoalsChangedEvent } from '../events/financeEvents'
-import { deleteSavingsGoal, listAccounts, listSavingsGoals, saveSavingsGoal, updateSavingsGoalStatus } from '../services/accounting'
-import type { Account, SavingsGoal, SavingsGoalFormValues } from '../types/finance'
+import {
+  deleteSavingsGoal,
+  deleteSavingsGoalContribution,
+  listAccounts,
+  listSavingsGoalContributions,
+  listSavingsGoals,
+  saveSavingsGoal,
+  saveSavingsGoalContribution,
+  updateSavingsGoalStatus,
+} from '../services/accounting'
+import type { Account, SavingsGoal, SavingsGoalContribution, SavingsGoalContributionFormValues, SavingsGoalFormValues } from '../types/finance'
 import { formatCurrencyAmount, getActiveCurrency } from '../utils/currency'
 
 const initialGoal: SavingsGoalFormValues = {
@@ -26,6 +37,16 @@ const initialGoal: SavingsGoalFormValues = {
   status: 'active',
   color: '#198c7c',
   icon: 'target',
+}
+
+function initialContribution(goalId = ''): SavingsGoalContributionFormValues {
+  return {
+    goal_id: goalId,
+    account_id: '',
+    amount: '',
+    contribution_date: new Date().toISOString().slice(0, 10),
+    note: '',
+  }
 }
 
 function goalToForm(goal: SavingsGoal): SavingsGoalFormValues {
@@ -57,9 +78,13 @@ export function SavingsGoalsPage() {
   const { user } = useAuth()
   const { confirm, ConfirmDialog } = useConfirmDialog()
   const [goals, setGoals] = useState<SavingsGoal[]>([])
+  const [contributions, setContributions] = useState<SavingsGoalContribution[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [values, setValues] = useState<SavingsGoalFormValues>(initialGoal)
+  const [contributionValues, setContributionValues] = useState<SavingsGoalContributionFormValues>(initialContribution())
+  const [selectedContributionGoalId, setSelectedContributionGoalId] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [showContributionForm, setShowContributionForm] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -70,11 +95,13 @@ export function SavingsGoalsPage() {
     setLoading(true)
     setError('')
     try {
-      const [goalData, accountData] = await Promise.all([
+      const [goalData, contributionData, accountData] = await Promise.all([
         listSavingsGoals(user.id),
+        listSavingsGoalContributions(user.id),
         listAccounts(user.id).catch(() => [] as Account[]),
       ])
       setGoals(goalData)
+      setContributions(contributionData)
       setAccounts(accountData)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar las metas de ahorro.')
@@ -117,6 +144,19 @@ export function SavingsGoalsPage() {
   }, [activeGoals])
   const totalSaved = useMemo(() => totalInActiveCurrency(activeGoals, 'current_amount'), [activeGoals])
   const totalTarget = useMemo(() => totalInActiveCurrency(activeGoals, 'target_amount'), [activeGoals])
+  const contributionsByGoal = useMemo(() => {
+    const rows = new Map<string, SavingsGoalContribution[]>()
+    contributions.forEach((contribution) => {
+      const current = rows.get(contribution.goal_id) ?? []
+      current.push(contribution)
+      rows.set(contribution.goal_id, current)
+    })
+    return rows
+  }, [contributions])
+  const selectedContributionGoal = useMemo(
+    () => goals.find((goal) => goal.id === selectedContributionGoalId) ?? null,
+    [goals, selectedContributionGoalId],
+  )
 
   async function handleSubmit() {
     if (!user) return
@@ -136,6 +176,25 @@ export function SavingsGoalsPage() {
     }
   }
 
+  async function handleContributionSubmit() {
+    if (!user || !selectedContributionGoal) return
+    setSaving(true)
+    setError('')
+    setSuccess('')
+    try {
+      await saveSavingsGoalContribution(user.id, contributionValues)
+      setContributionValues(initialContribution())
+      setSelectedContributionGoalId('')
+      setShowContributionForm(false)
+      setSuccess(contributionValues.id ? 'Aporte actualizado correctamente.' : 'Aporte registrado correctamente.')
+      await loadGoals()
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'No se pudo guardar el aporte.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function startCreate() {
     setValues({ ...initialGoal, currency: getActiveCurrency() })
     setShowForm(true)
@@ -146,6 +205,31 @@ export function SavingsGoalsPage() {
   function startEdit(goal: SavingsGoal) {
     setValues(goalToForm(goal))
     setShowForm(true)
+    setSuccess('')
+    setError('')
+  }
+
+  function startContribution(goal: SavingsGoal) {
+    setSelectedContributionGoalId(goal.id)
+    setContributionValues(initialContribution(goal.id))
+    setShowContributionForm(true)
+    setShowForm(false)
+    setSuccess('')
+    setError('')
+  }
+
+  function editContribution(contribution: SavingsGoalContribution) {
+    setSelectedContributionGoalId(contribution.goal_id)
+    setContributionValues({
+      id: contribution.id,
+      goal_id: contribution.goal_id,
+      account_id: contribution.account_id ?? '',
+      amount: String(contribution.amount),
+      contribution_date: contribution.contribution_date,
+      note: contribution.note ?? '',
+    })
+    setShowContributionForm(true)
+    setShowForm(false)
     setSuccess('')
     setError('')
   }
@@ -181,6 +265,27 @@ export function SavingsGoalsPage() {
       await loadGoals()
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'No se pudo eliminar la meta.')
+    }
+  }
+
+  async function removeContribution(contribution: SavingsGoalContribution) {
+    if (!user) return
+    const confirmed = await confirm({
+      title: 'Eliminar aporte?',
+      description: 'El progreso de la meta se recalculara automaticamente al eliminar este aporte.',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!confirmed) return
+
+    setError('')
+    setSuccess('')
+    try {
+      await deleteSavingsGoalContribution(user.id, contribution.id)
+      setSuccess('Aporte eliminado correctamente.')
+      await loadGoals()
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'No se pudo eliminar el aporte.')
     }
   }
 
@@ -247,18 +352,43 @@ export function SavingsGoalsPage() {
             />
           ) : null}
 
+          {showContributionForm && selectedContributionGoal ? (
+            <SavingsGoalContributionForm
+              goal={selectedContributionGoal}
+              values={contributionValues}
+              accounts={accounts}
+              saving={saving}
+              onChange={setContributionValues}
+              onSubmit={() => void handleContributionSubmit()}
+              onCancel={() => {
+                setShowContributionForm(false)
+                setSelectedContributionGoalId('')
+                setContributionValues(initialContribution())
+              }}
+            />
+          ) : null}
+
           {goals.length ? (
             <section className="grid gap-4 xl:grid-cols-2">
               {goals.map((goal) => (
-                <SavingsGoalCard
-                  key={goal.id}
-                  goal={goal}
-                  onEdit={startEdit}
-                  onPause={(item) => void changeStatus(item, 'paused')}
-                  onResume={(item) => void changeStatus(item, 'active')}
-                  onComplete={(item) => void changeStatus(item, 'completed')}
-                  onDelete={(item) => void removeGoal(item)}
-                />
+                <div key={goal.id} className="space-y-4">
+                  <SavingsGoalCard
+                    goal={goal}
+                    contributions={contributionsByGoal.get(goal.id) ?? []}
+                    onEdit={startEdit}
+                    onContribute={startContribution}
+                    onPause={(item) => void changeStatus(item, 'paused')}
+                    onResume={(item) => void changeStatus(item, 'active')}
+                    onComplete={(item) => void changeStatus(item, 'completed')}
+                    onDelete={(item) => void removeGoal(item)}
+                  />
+                  <SavingsGoalContributionsPanel
+                    goal={goal}
+                    contributions={contributionsByGoal.get(goal.id) ?? []}
+                    onEdit={editContribution}
+                    onDelete={(item) => void removeContribution(item)}
+                  />
+                </div>
               ))}
             </section>
           ) : (

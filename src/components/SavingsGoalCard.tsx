@@ -1,7 +1,7 @@
-import { CheckCircle2, Edit2, PauseCircle, PlayCircle, Target, Trash2 } from 'lucide-react'
+import { CheckCircle2, Edit2, PlusCircle, PauseCircle, PlayCircle, Target, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
-import type { SavingsGoal } from '../types/finance'
+import type { SavingsGoal, SavingsGoalContribution } from '../types/finance'
 import { formatCurrencyAmount } from '../utils/currency'
 import { formatDate } from '../utils/format'
 
@@ -71,17 +71,21 @@ export function savingsGoalHealth(goal: SavingsGoal): 'healthy' | 'late' | 'comp
 export function SavingsGoalCard({
   goal,
   onEdit,
+  onContribute,
   onPause,
   onResume,
   onComplete,
   onDelete,
+  contributions = [],
 }: {
   goal: SavingsGoal
   onEdit: (goal: SavingsGoal) => void
+  onContribute: (goal: SavingsGoal) => void
   onPause: (goal: SavingsGoal) => void
   onResume: (goal: SavingsGoal) => void
   onComplete: (goal: SavingsGoal) => void
   onDelete: (goal: SavingsGoal) => void
+  contributions?: SavingsGoalContribution[]
 }) {
   const progress = savingsGoalProgress(goal)
   const remaining = savingsGoalRemaining(goal)
@@ -92,6 +96,8 @@ export function SavingsGoalCard({
     late: 'Atrasada',
     completed: 'Completada',
   }[health]
+  const latestContribution = contributions[0]
+  const totalContributed = contributions.reduce((total, contribution) => total + Number(contribution.amount), 0)
 
   return (
     <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
@@ -149,11 +155,14 @@ export function SavingsGoalCard({
       <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
         <Metric label="Restante" value={formatCurrencyAmount(remaining, goal.currency)} tone={remaining > 0 ? 'expense' : 'income'} />
         <Metric label="Sugerido mensual" value={monthlySaving ? formatCurrencyAmount(monthlySaving, goal.currency) : 'Sin fecha'} />
+        <Metric label="Total aportado" value={formatCurrencyAmount(totalContributed, goal.currency)} tone="income" />
+        <Metric label="Ultimo aporte" value={latestContribution ? formatDate(latestContribution.contribution_date) : 'Sin aportes'} />
         <Metric label="Estado" value={savingsGoalStatusLabel(goal.status)} />
         <Metric label="Fecha objetivo" value={goal.target_date ? formatDate(goal.target_date) : 'Sin fecha'} />
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
+        <ActionButton label="Aportar" icon={PlusCircle} onClick={() => onContribute(goal)} disabled={goal.status === 'cancelled'} />
         <ActionButton label="Editar" icon={Edit2} onClick={() => onEdit(goal)} />
         {goal.status === 'paused' ? (
           <ActionButton label="Reanudar" icon={PlayCircle} onClick={() => onResume(goal)} />

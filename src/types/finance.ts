@@ -271,6 +271,20 @@ export type SavingsGoal = {
   account?: Pick<Account, 'id' | 'name' | 'color'> | null
 }
 
+export type SavingsGoalContribution = {
+  id: string
+  user_id: string
+  goal_id: string
+  account_id: string | null
+  transaction_id: string | null
+  amount: number
+  contribution_date: string
+  note: string | null
+  created_at: string
+  updated_at?: string
+  account?: Pick<Account, 'id' | 'name' | 'color'> | null
+}
+
 export type SavingsGoalFormValues = {
   id?: string
   account_id: string
@@ -285,4 +299,13 @@ export type SavingsGoalFormValues = {
   status: SavingsGoalStatus
   color: string
   icon: string
+}
+
+export type SavingsGoalContributionFormValues = {
+  id?: string
+  goal_id: string
+  account_id: string
+  amount: string
+  contribution_date: string
+  note: string
 }

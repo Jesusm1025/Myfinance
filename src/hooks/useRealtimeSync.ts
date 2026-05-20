@@ -118,6 +118,16 @@ export function useRealtimeSync(userId?: string) {
         },
         () => notifySavingsGoalsChanged(),
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'savings_goal_contributions',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => notifySavingsGoalsChanged(),
+      )
       .subscribe((nextStatus, realtimeError) => {
         if (nextStatus === 'SUBSCRIBED') {
           setStatus('connected')
