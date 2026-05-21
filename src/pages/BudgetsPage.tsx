@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarRange, PiggyBank } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
+import { AutoBudgetPanel } from '../components/AutoBudgetPanel'
 import { BudgetPanel } from '../components/BudgetPanel'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { EmptyState } from '../components/EmptyState'
 import { SkeletonList } from '../components/Skeleton'
 import { StatusMessage } from '../components/StatusMessage'
 import { budgetsChangedEvent, categoriesChangedEvent, movementsChangedEvent } from '../events/financeEvents'
-import { listCategories, listMonthlyBudgets, listMovements } from '../services/accounting'
+import { listAllMovements, listCategories, listMonthlyBudgets, listMovements, saveMonthlyBudget } from '../services/accounting'
 import type { Category, MonthlyBudget, Movement, MovementFilters } from '../types/finance'
-import { currentMonthValue, monthRange } from '../utils/format'
+import { buildAutoBudgetSuggestions, type AutoBudgetSuggestion } from '../utils/autoBudget'
+import { currentMonthValue, formatMoney, monthRange } from '../utils/format'
+import { detectRecurringExpenses } from '../utils/recurringExpenses'
 
 const baseFilters: MovementFilters = {
   month: currentMonthValue(),
@@ -28,12 +32,17 @@ function sumExpenses(movements: Movement[]) {
 
 export function BudgetsPage() {
   const { user } = useAuth()
+  const { confirm, ConfirmDialog } = useConfirmDialog()
   const [month, setMonth] = useState(currentMonthValue())
   const [movements, setMovements] = useState<Movement[]>([])
+  const [allMovements, setAllMovements] = useState<Movement[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([])
   const [loading, setLoading] = useState(true)
+  const [savingSuggestionId, setSavingSuggestionId] = useState<string | null>(null)
+  const [applyingAll, setApplyingAll] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
 
   const loadBudgets = useCallback(async () => {
     if (!user) return
@@ -41,12 +50,14 @@ export function BudgetsPage() {
     setError('')
 
     try {
-      const [movementData, categoryData, budgetData] = await Promise.all([
+      const [movementData, allMovementData, categoryData, budgetData] = await Promise.all([
         listMovements(user.id, { ...baseFilters, month, ...monthRange(month) }),
+        listAllMovements(user.id),
         listCategories(user.id),
         listMonthlyBudgets(user.id, month).catch(() => [] as MonthlyBudget[]),
       ])
       setMovements(movementData)
+      setAllMovements(allMovementData)
       setCategories(categoryData)
       setBudgets(budgetData)
     } catch (loadError) {
@@ -72,6 +83,18 @@ export function BudgetsPage() {
   }, [loadBudgets])
 
   const totalExpenses = useMemo(() => sumExpenses(movements), [movements])
+  const recurringExpenses = useMemo(() => detectRecurringExpenses(allMovements), [allMovements])
+  const autoBudgetSuggestions = useMemo(
+    () =>
+      buildAutoBudgetSuggestions({
+        movements: allMovements,
+        categories,
+        budgets,
+        recurringExpenses: recurringExpenses.items,
+        month,
+      }),
+    [allMovements, budgets, categories, month, recurringExpenses.items],
+  )
   const categorySpend = useMemo(() => {
     const totals = new Map<string, number>()
     movements
@@ -84,8 +107,77 @@ export function BudgetsPage() {
     return Array.from(totals.entries()).map(([categoryId, spent]) => ({ categoryId, spent }))
   }, [movements])
 
+  async function applySuggestion(suggestion: AutoBudgetSuggestion) {
+    if (!user || !suggestion.suggestedAmount) return
+    if (suggestion.budget) {
+      const confirmed = await confirm({
+        title: `Actualizar presupuesto de ${suggestion.category.name}`,
+        description: `El presupuesto actual es ${formatMoney(Number(suggestion.budget.amount))}. Se reemplazara por ${formatMoney(suggestion.suggestedAmount)}. Deseas continuar?`,
+        confirmLabel: 'Actualizar',
+      })
+      if (!confirmed) return
+    }
+    setSavingSuggestionId(suggestion.category.id)
+    setError('')
+    setSuccess('')
+    try {
+      await saveMonthlyBudget(user.id, {
+        id: suggestion.budget?.id,
+        month,
+        category_id: suggestion.category.id,
+        amount: String(suggestion.suggestedAmount),
+      })
+      setSuccess(
+        suggestion.budget
+          ? `Presupuesto de ${suggestion.category.name} actualizado con la sugerencia.`
+          : `Presupuesto de ${suggestion.category.name} aplicado correctamente.`,
+      )
+      await loadBudgets()
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'No se pudo aplicar la sugerencia.')
+    } finally {
+      setSavingSuggestionId(null)
+    }
+  }
+
+  async function applyAllSuggestions() {
+    if (!user) return
+    const applicableSuggestions = autoBudgetSuggestions.filter((suggestion) => suggestion.hasEnoughData && suggestion.suggestedAmount)
+    if (!applicableSuggestions.length) return
+    const overwriteCount = applicableSuggestions.filter((suggestion) => suggestion.budget).length
+    const confirmed = await confirm({
+      title: 'Aplicar presupuestos sugeridos',
+      description: overwriteCount
+        ? `Se aplicaran ${applicableSuggestions.length} sugerencias y se actualizaran ${overwriteCount} presupuesto(s) existentes. Deseas continuar?`
+        : `Se aplicaran ${applicableSuggestions.length} sugerencias de presupuesto. Deseas continuar?`,
+      confirmLabel: 'Aplicar todas',
+    })
+    if (!confirmed) return
+
+    setApplyingAll(true)
+    setError('')
+    setSuccess('')
+    try {
+      for (const suggestion of applicableSuggestions) {
+        await saveMonthlyBudget(user.id, {
+          id: suggestion.budget?.id,
+          month,
+          category_id: suggestion.category.id,
+          amount: String(suggestion.suggestedAmount),
+        })
+      }
+      setSuccess('Presupuestos sugeridos aplicados correctamente.')
+      await loadBudgets()
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'No se pudieron aplicar todas las sugerencias.')
+    } finally {
+      setApplyingAll(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
+      <ConfirmDialog />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-100">
@@ -107,6 +199,7 @@ export function BudgetsPage() {
       </div>
 
       {error ? <StatusMessage message={error} /> : null}
+      {success ? <StatusMessage message={success} variant="success" /> : null}
 
       {loading ? (
         <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
@@ -121,15 +214,24 @@ export function BudgetsPage() {
           </div>
         </section>
       ) : user ? (
-        <BudgetPanel
-          userId={user.id}
-          month={month}
-          categories={categories}
-          budgets={budgets}
-          categorySpend={categorySpend}
-          totalExpenses={totalExpenses}
-          onChanged={loadBudgets}
-        />
+        <>
+          <AutoBudgetPanel
+            suggestions={autoBudgetSuggestions}
+            applyingId={savingSuggestionId}
+            applyingAll={applyingAll}
+            onApply={(suggestion) => void applySuggestion(suggestion)}
+            onApplyAll={() => void applyAllSuggestions()}
+          />
+          <BudgetPanel
+            userId={user.id}
+            month={month}
+            categories={categories}
+            budgets={budgets}
+            categorySpend={categorySpend}
+            totalExpenses={totalExpenses}
+            onChanged={loadBudgets}
+          />
+        </>
       ) : (
         <EmptyState title="Inicia sesion" detail="Tus presupuestos se cargaran al entrar con tu cuenta." />
       )}
