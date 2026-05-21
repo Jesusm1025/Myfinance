@@ -31,9 +31,10 @@ import { SkeletonList, SkeletonStats } from '../components/Skeleton'
 import { SmartAlertsPanel } from '../components/SmartAlertsPanel'
 import { StatCard } from '../components/StatCard'
 import { StatusMessage } from '../components/StatusMessage'
-import { budgetsChangedEvent, categoriesChangedEvent, debtsChangedEvent, movementsChangedEvent, savingsGoalsChangedEvent } from '../events/financeEvents'
-import { listAllMovements, listCategories, listDebtInstallments, listDebts, listMonthlyBudgets, listMovements, listSavingsGoals } from '../services/accounting'
-import type { Category, Debt, DebtInstallment, MonthlyBudget, Movement, MovementFilters, SavingsGoal } from '../types/finance'
+import { accountsChangedEvent, budgetsChangedEvent, categoriesChangedEvent, debtsChangedEvent, movementsChangedEvent, savingsGoalsChangedEvent } from '../events/financeEvents'
+import { listAccountTransfers, listAccounts, listAllMovements, listCategories, listDebtInstallments, listDebts, listMonthlyBudgets, listMovements, listSavingsGoals } from '../services/accounting'
+import type { Account, AccountTransfer, Category, Debt, DebtInstallment, MonthlyBudget, Movement, MovementFilters, SavingsGoal } from '../types/finance'
+import { buildAccountBalances, totalAccountBalance } from '../utils/accounts'
 import { currentMonthValue, formatDate, formatMoney, monthRange, paymentMethodLabel } from '../utils/format'
 import { detectRecurringExpenses } from '../utils/recurringExpenses'
 import { buildBudgetSmartAlerts, buildDebtSmartAlerts, sortSmartAlerts } from '../utils/smartAlerts'
@@ -70,6 +71,8 @@ export function DashboardPage() {
   const [debts, setDebts] = useState<Debt[]>([])
   const [installments, setInstallments] = useState<DebtInstallment[]>([])
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [accountTransfers, setAccountTransfers] = useState<AccountTransfer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -86,8 +89,10 @@ export function DashboardPage() {
       listDebts(user.id).catch(() => [] as Debt[]),
       listDebtInstallments(user.id).catch(() => [] as DebtInstallment[]),
       listSavingsGoals(user.id).catch(() => [] as SavingsGoal[]),
+      listAccounts(user.id).catch(() => [] as Account[]),
+      listAccountTransfers(user.id).catch(() => [] as AccountTransfer[]),
     ])
-      .then(([monthData, allData, categoryData, budgetData, debtData, installmentData, savingsGoalData]) => {
+      .then(([monthData, allData, categoryData, budgetData, debtData, installmentData, savingsGoalData, accountData, transferData]) => {
         setMonthlyMovements(monthData)
         setAllMovements(allData)
         setCategories(categoryData)
@@ -95,6 +100,8 @@ export function DashboardPage() {
         setDebts(debtData)
         setInstallments(installmentData)
         setSavingsGoals(savingsGoalData)
+        setAccounts(accountData)
+        setAccountTransfers(transferData)
       })
       .catch((loadError) => {
         setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el dashboard.')
@@ -112,12 +119,14 @@ export function DashboardPage() {
     window.addEventListener(budgetsChangedEvent, loadDashboard)
     window.addEventListener(debtsChangedEvent, loadDashboard)
     window.addEventListener(savingsGoalsChangedEvent, loadDashboard)
+    window.addEventListener(accountsChangedEvent, loadDashboard)
     return () => {
       window.removeEventListener(movementsChangedEvent, loadDashboard)
       window.removeEventListener(categoriesChangedEvent, loadDashboard)
       window.removeEventListener(budgetsChangedEvent, loadDashboard)
       window.removeEventListener(debtsChangedEvent, loadDashboard)
       window.removeEventListener(savingsGoalsChangedEvent, loadDashboard)
+      window.removeEventListener(accountsChangedEvent, loadDashboard)
     }
   }, [loadDashboard])
 
@@ -127,10 +136,14 @@ export function DashboardPage() {
     return { income, expenses, balance: income - expenses }
   }, [monthlyMovements])
 
-  const generalBalance = useMemo(
-    () => sumByType(allMovements, 'income') - sumByType(allMovements, 'expense'),
-    [allMovements],
+  const accountBalances = useMemo(
+    () => buildAccountBalances(accounts, allMovements, accountTransfers),
+    [accounts, accountTransfers, allMovements],
   )
+  const generalBalance = useMemo(() => {
+    if (accountBalances.length) return totalAccountBalance(accountBalances)
+    return sumByType(allMovements, 'income') - sumByType(allMovements, 'expense')
+  }, [accountBalances, allMovements])
 
   const expensesByCategory = useMemo(() => {
     const totals = new Map<string, { id: string; name: string; value: number; color: string }>()
@@ -267,18 +280,23 @@ export function DashboardPage() {
       {loading ? (
         <SkeletonStats count={5} />
       ) : (
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard title="Ingresos del mes" value={formatMoney(monthlySummary.income)} icon={ArrowUpCircle} />
-          <StatCard title="Gastos del mes" value={formatMoney(monthlySummary.expenses)} icon={ArrowDownCircle} tone="coral" />
-          <StatCard title="Balance mensual" value={formatMoney(monthlySummary.balance)} icon={Wallet} tone="gold" />
-          <StatCard title="Balance general" value={formatMoney(generalBalance)} icon={TrendingUp} />
-          <StatCard
-            title="Mayor gasto"
-            value={topExpenseCategory ? topExpenseCategory.name : 'Sin gastos'}
-            icon={Tags}
-            tone="coral"
-          />
-        </section>
+        <div className="space-y-2">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <StatCard title="Ingresos del mes" value={formatMoney(monthlySummary.income)} icon={ArrowUpCircle} />
+            <StatCard title="Gastos del mes" value={formatMoney(monthlySummary.expenses)} icon={ArrowDownCircle} tone="coral" />
+            <StatCard title="Balance mensual" value={formatMoney(monthlySummary.balance)} icon={Wallet} tone="gold" />
+            <StatCard title="Balance general" value={formatMoney(generalBalance)} icon={TrendingUp} />
+            <StatCard
+              title="Mayor gasto"
+              value={topExpenseCategory ? topExpenseCategory.name : 'Sin gastos'}
+              icon={Tags}
+              tone="coral"
+            />
+          </section>
+          <p className="text-xs text-muted dark:text-slate-400">
+            El balance general usa los saldos de Cuentas: balance inicial, movimientos y transferencias.
+          </p>
+        </div>
       )}
 
       {!loading && savingsGoals.length ? (

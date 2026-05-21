@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { FormEvent, RefObject } from 'react'
 import { ArrowRightLeft, Edit2, Landmark, LoaderCircle, Save, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
@@ -21,6 +21,7 @@ import {
 import type { Account, AccountFormValues, AccountTransfer, AccountType, TransferFormValues } from '../types/finance'
 import { buildAccountBalances, totalAccountBalance } from '../utils/accounts'
 import { accountTypeLabel, formatDate, formatMoney } from '../utils/format'
+import { scrollToElement } from '../utils/scroll'
 
 const fieldClass =
   'w-full rounded-lg border border-line bg-white px-3 py-2.5 text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-brand-500/20'
@@ -59,6 +60,8 @@ export function AccountsPage() {
   const [submittingTransfer, setSubmittingTransfer] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const accountFormRef = useRef<HTMLElement | null>(null)
+  const transferFormRef = useRef<HTMLElement | null>(null)
 
   const refresh = useCallback(async () => {
     if (!user) return
@@ -193,6 +196,7 @@ export function AccountsPage() {
       color: account.color,
       initial_balance: String(account.initial_balance),
     })
+    scrollToElement(accountFormRef)
   }
 
   function editTransfer(transfer: AccountTransfer) {
@@ -204,6 +208,7 @@ export function AccountsPage() {
       description: transfer.description ?? '',
       date: transfer.transfer_date,
     })
+    scrollToElement(transferFormRef)
   }
 
   return (
@@ -246,6 +251,7 @@ export function AccountsPage() {
       <section className="grid gap-5 xl:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
         <div className="space-y-5">
           <AccountForm
+            formRef={accountFormRef}
             values={accountValues}
             submitting={submittingAccount}
             onSubmit={handleAccountSubmit}
@@ -253,6 +259,7 @@ export function AccountsPage() {
             onCancel={() => setAccountValues(initialAccount)}
           />
           <TransferForm
+            formRef={transferFormRef}
             accounts={accounts}
             values={transferValues}
             submitting={submittingTransfer}
@@ -338,12 +345,14 @@ export function AccountsPage() {
 }
 
 function AccountForm({
+  formRef,
   values,
   submitting,
   onSubmit,
   onChange,
   onCancel,
 }: {
+  formRef: RefObject<HTMLElement | null>
   values: AccountFormValues
   submitting: boolean
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
@@ -351,7 +360,7 @@ function AccountForm({
   onCancel: () => void
 }) {
   return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+    <section ref={formRef} className="scroll-mt-24 rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
       <div className="flex items-center gap-3">
         <div className="rounded-lg bg-brand-50 p-2 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100">
           <Landmark className="h-5 w-5" />
@@ -442,6 +451,7 @@ function AccountForm({
 }
 
 function TransferForm({
+  formRef,
   accounts,
   values,
   submitting,
@@ -449,6 +459,7 @@ function TransferForm({
   onChange,
   onCancel,
 }: {
+  formRef: RefObject<HTMLElement | null>
   accounts: Account[]
   values: TransferFormValues
   submitting: boolean
@@ -457,7 +468,7 @@ function TransferForm({
   onCancel: () => void
 }) {
   return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+    <section ref={formRef} className="scroll-mt-24 rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
       <div className="flex items-center gap-3">
         <div className="rounded-lg bg-gold-50 p-2 text-gold-500 dark:bg-gold-500/15">
           <ArrowRightLeft className="h-5 w-5" />

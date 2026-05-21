@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Edit2, Filter, LoaderCircle, Plus, Save, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
@@ -23,6 +23,7 @@ import {
   movementTypeLabel,
   paymentMethodLabel,
 } from '../utils/format'
+import { scrollToElement } from '../utils/scroll'
 
 const fieldClass =
   'w-full rounded-lg border border-line bg-white px-3 py-2.5 text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-brand-500/20'
@@ -61,6 +62,7 @@ export function MovementsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const formRef = useRef<HTMLElement | null>(null)
 
   const refresh = useCallback(async () => {
     if (!user) return
@@ -179,13 +181,14 @@ export function MovementsPage() {
       date: movement.date,
       payment_method: movement.payment_method,
     })
+    scrollToElement(formRef)
   }
 
   return (
     <>
       <ConfirmDialog />
       <div className="grid gap-5 xl:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
-      <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+      <section ref={formRef} className="scroll-mt-24 rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
         <div className="flex items-center gap-3">
           <div className="rounded-lg bg-brand-50 p-2 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100">
             <Plus className="h-5 w-5" />

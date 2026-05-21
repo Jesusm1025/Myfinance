@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Save, Trash2, WalletCards } from 'lucide-react'
 import clsx from 'clsx'
 import type { Category, MonthlyBudget } from '../types/finance'
 import { deleteMonthlyBudget, saveMonthlyBudget } from '../services/accounting'
 import { formatMoney } from '../utils/format'
+import { scrollToElement } from '../utils/scroll'
 import { StatusMessage } from './StatusMessage'
 
 type CategorySpend = {
@@ -80,6 +81,7 @@ export function BudgetPanel({
   const [savingId, setSavingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const panelRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     setGeneralValue(generalBudget ? String(generalBudget.amount) : '')
@@ -118,6 +120,7 @@ export function BudgetPanel({
         amount,
       })
       setSuccess('Presupuesto guardado correctamente.')
+      scrollToElement(panelRef)
       await onChanged()
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'No se pudo guardar el presupuesto.')
@@ -136,6 +139,7 @@ export function BudgetPanel({
     try {
       await deleteMonthlyBudget(userId, existing.id)
       setSuccess('Presupuesto eliminado correctamente.')
+      scrollToElement(panelRef)
       await onChanged()
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'No se pudo eliminar el presupuesto.')
@@ -145,7 +149,7 @@ export function BudgetPanel({
   }
 
   return (
-    <section className="rounded-lg border border-line bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <section ref={panelRef} className="scroll-mt-24 rounded-lg border border-line bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="border-b border-line p-4 dark:border-slate-800 sm:p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-3">

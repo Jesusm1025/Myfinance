@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { CalendarClock, CheckCircle2, CircleDollarSign, ClipboardList, Edit2, History, LoaderCircle, Plus, Save, ShieldCheck, TrendingUp, Trash2, WalletCards, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
@@ -23,6 +23,7 @@ import {
   paymentMethodLabel,
 } from '../utils/format'
 import { buildDebtSmartAlerts, sortSmartAlerts } from '../utils/smartAlerts'
+import { scrollToElement } from '../utils/scroll'
 
 const fieldClass =
   'w-full rounded-lg border border-line bg-white px-3 py-2.5 text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-brand-500/20'
@@ -102,6 +103,8 @@ export function DebtsPage() {
   const [payingInstallmentId, setPayingInstallmentId] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const debtFormRef = useRef<HTMLElement | null>(null)
+  const paymentFormRefs = useRef<Record<string, HTMLFormElement | null>>({})
 
   const loadDebts = useCallback(async () => {
     if (!user) return
@@ -315,7 +318,11 @@ export function DebtsPage() {
 
   function startCreate() {
     setValues(initialDebt)
-    setShowForm((current) => !current)
+    setShowForm((current) => {
+      const next = !current
+      if (next) scrollToElement(debtFormRef)
+      return next
+    })
     setError('')
     setSuccess('')
   }
@@ -325,7 +332,7 @@ export function DebtsPage() {
     setShowForm(true)
     setError('')
     setSuccess('')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    scrollToElement(debtFormRef)
   }
 
   async function handleDelete(debt: Debt) {
@@ -405,6 +412,9 @@ export function DebtsPage() {
         ...current,
         [debt.id]: current[debt.id] ?? initialDebtPayment(debt.id),
       }))
+      window.requestAnimationFrame(() => {
+        paymentFormRefs.current[debt.id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
     }
     setError('')
     setSuccess('')
@@ -541,7 +551,7 @@ export function DebtsPage() {
       )}
 
       {showForm ? (
-        <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+        <section ref={debtFormRef} className="scroll-mt-24 rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-brand-50 p-2 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100">
               <Plus className="h-5 w-5" />
@@ -1186,7 +1196,13 @@ export function DebtsPage() {
                   </div>
 
                   {openPaymentDebtId === debt.id ? (
-                    <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={(event) => void handlePaymentSubmit(event, debt)}>
+                    <form
+                      ref={(element) => {
+                        paymentFormRefs.current[debt.id] = element
+                      }}
+                      className="scroll-mt-24 mt-4 grid gap-3 md:grid-cols-2"
+                      onSubmit={(event) => void handlePaymentSubmit(event, debt)}
+                    >
                       <label className="block">
                         <span className={labelClass}>Monto pagado</span>
                         <input

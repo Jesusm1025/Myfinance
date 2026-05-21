@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Target, TrendingUp, Wallet } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { EmptyState } from '../components/EmptyState'
@@ -23,6 +23,7 @@ import {
 } from '../services/accounting'
 import type { Account, SavingsGoal, SavingsGoalContribution, SavingsGoalContributionFormValues, SavingsGoalFormValues } from '../types/finance'
 import { formatCurrencyAmount, getActiveCurrency } from '../utils/currency'
+import { scrollToElement } from '../utils/scroll'
 
 const initialGoal: SavingsGoalFormValues = {
   account_id: '',
@@ -92,6 +93,8 @@ export function SavingsGoalsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const goalFormRef = useRef<HTMLDivElement | null>(null)
+  const contributionFormRef = useRef<HTMLDivElement | null>(null)
 
   const loadGoals = useCallback(async () => {
     if (!user) return
@@ -207,6 +210,7 @@ export function SavingsGoalsPage() {
     setShowForm(true)
     setSuccess('')
     setError('')
+    scrollToElement(goalFormRef)
   }
 
   function startEdit(goal: SavingsGoal) {
@@ -214,6 +218,7 @@ export function SavingsGoalsPage() {
     setShowForm(true)
     setSuccess('')
     setError('')
+    scrollToElement(goalFormRef)
   }
 
   function startContribution(goal: SavingsGoal) {
@@ -227,6 +232,7 @@ export function SavingsGoalsPage() {
     setShowForm(false)
     setSuccess('')
     setError('')
+    scrollToElement(contributionFormRef)
   }
 
   function editContribution(contribution: SavingsGoalContribution) {
@@ -246,6 +252,7 @@ export function SavingsGoalsPage() {
     setShowForm(false)
     setSuccess('')
     setError('')
+    scrollToElement(contributionFormRef)
   }
 
   async function changeStatus(goal: SavingsGoal, status: SavingsGoal['status']) {
@@ -380,34 +387,38 @@ export function SavingsGoalsPage() {
           ) : null}
 
           {showForm ? (
-            <SavingsGoalForm
-              values={values}
-              accounts={accounts}
-              saving={saving}
-              currentAmountReadOnly={editingGoalHasContributions}
-              onChange={setValues}
-              onSubmit={() => void handleSubmit()}
-              onCancel={() => {
-                setShowForm(false)
-                setValues({ ...initialGoal, currency: getActiveCurrency() })
-              }}
-            />
+            <div ref={goalFormRef} className="scroll-mt-24">
+              <SavingsGoalForm
+                values={values}
+                accounts={accounts}
+                saving={saving}
+                currentAmountReadOnly={editingGoalHasContributions}
+                onChange={setValues}
+                onSubmit={() => void handleSubmit()}
+                onCancel={() => {
+                  setShowForm(false)
+                  setValues({ ...initialGoal, currency: getActiveCurrency() })
+                }}
+              />
+            </div>
           ) : null}
 
           {showContributionForm && selectedContributionGoal ? (
-            <SavingsGoalContributionForm
-              goal={selectedContributionGoal}
-              values={contributionValues}
-              accounts={accounts}
-              saving={saving}
-              onChange={setContributionValues}
-              onSubmit={() => void handleContributionSubmit()}
-              onCancel={() => {
-                setShowContributionForm(false)
-                setSelectedContributionGoalId('')
-                setContributionValues(initialContribution())
-              }}
-            />
+            <div ref={contributionFormRef} className="scroll-mt-24">
+              <SavingsGoalContributionForm
+                goal={selectedContributionGoal}
+                values={contributionValues}
+                accounts={accounts}
+                saving={saving}
+                onChange={setContributionValues}
+                onSubmit={() => void handleContributionSubmit()}
+                onCancel={() => {
+                  setShowContributionForm(false)
+                  setSelectedContributionGoalId('')
+                  setContributionValues(initialContribution())
+                }}
+              />
+            </div>
           ) : null}
 
           {goals.length ? (

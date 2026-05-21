@@ -1,4 +1,4 @@
-import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   Briefcase,
@@ -39,6 +39,7 @@ import {
 } from '../services/accounting'
 import type { Category, CategoryFormValues } from '../types/finance'
 import { movementTypeLabel } from '../utils/format'
+import { scrollToElement } from '../utils/scroll'
 
 type IconName =
   | 'utensils'
@@ -112,6 +113,7 @@ export function CategoriesPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const formRef = useRef<HTMLElement | null>(null)
 
   const refresh = useCallback(async () => {
     if (!user) return
@@ -199,13 +201,14 @@ export function CategoriesPage() {
       color: category.color,
       icon: category.icon ?? 'circle-ellipsis',
     })
+    scrollToElement(formRef)
   }
 
   return (
     <>
       <ConfirmDialog />
       <div className="grid gap-5 xl:grid-cols-[390px_1fr]">
-      <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+      <section ref={formRef} className="scroll-mt-24 rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
         <div className="flex items-center gap-3">
           <div className="rounded-lg bg-brand-50 p-2 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100">
             <Plus className="h-5 w-5" />
