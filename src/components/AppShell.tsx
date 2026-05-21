@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { BarChart3, CalendarCheck, CircleDollarSign, FileBarChart, FolderTree, Landmark, LogOut, MailSearch, MoreHorizontal, Moon, PiggyBank, Settings, Sun, Target, WalletCards, X } from 'lucide-react'
+import { BarChart3, CalendarCheck, CircleDollarSign, FileBarChart, FolderTree, Landmark, LogOut, MailSearch, MessagesSquare, MoreHorizontal, Moon, PiggyBank, Settings, Sun, Target, WalletCards, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
@@ -21,6 +21,14 @@ const monthlyCloseNavItem = {
   mobileLabel: 'Cierre',
   icon: CalendarCheck,
   paths: ['/cierre-mensual', '/monthly-close'],
+}
+
+const financialAdvisorNavItem = {
+  to: '/asesor-financiero',
+  label: 'Asesor financiero',
+  mobileLabel: 'Asesor',
+  icon: MessagesSquare,
+  paths: ['/asesor-financiero', '/financial-advisor'],
 }
 
 const managementNavItems = [
@@ -45,14 +53,14 @@ const settingsNavItems = [
 ]
 
 const navGroups = [
-  { label: 'Principal', items: [...primaryNavItems, monthlyCloseNavItem] },
+  { label: 'Principal', items: [...primaryNavItems, monthlyCloseNavItem, financialAdvisorNavItem] },
   { label: 'Gestion', items: managementNavItems },
   { label: 'Automatizacion', items: automationNavItems },
   { label: 'Configuracion', items: settingsNavItems },
 ]
 
 const moreNavGroups = [
-  { label: 'Principal', items: [monthlyCloseNavItem] },
+  { label: 'Principal', items: [monthlyCloseNavItem, financialAdvisorNavItem] },
   ...navGroups.slice(1),
 ]
 

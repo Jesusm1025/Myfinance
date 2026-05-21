@@ -13,6 +13,7 @@ const BudgetsPage = lazy(() => import('./pages/BudgetsPage').then((module) => ({
 const CategoriesPage = lazy(() => import('./pages/CategoriesPage').then((module) => ({ default: module.CategoriesPage })))
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
 const DebtsPage = lazy(() => import('./pages/DebtsPage').then((module) => ({ default: module.DebtsPage })))
+const FinancialAdvisorPage = lazy(() => import('./pages/FinancialAdvisorPage').then((module) => ({ default: module.FinancialAdvisorPage })))
 const ImportBankEmailsPage = lazy(() => import('./pages/ImportBankEmailsPage').then((module) => ({ default: module.ImportBankEmailsPage })))
 const MonthlyClosePage = lazy(() => import('./pages/MonthlyClosePage').then((module) => ({ default: module.MonthlyClosePage })))
 const MovementsPage = lazy(() => import('./pages/MovementsPage').then((module) => ({ default: module.MovementsPage })))
@@ -66,6 +67,8 @@ function App() {
                   <Route path="reports" element={<ReportsPage />} />
                   <Route path="cierre-mensual" element={<MonthlyClosePage />} />
                   <Route path="monthly-close" element={<MonthlyClosePage />} />
+                  <Route path="asesor-financiero" element={<FinancialAdvisorPage />} />
+                  <Route path="financial-advisor" element={<FinancialAdvisorPage />} />
                   <Route path="configuracion" element={<SettingsPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                 </Route>
