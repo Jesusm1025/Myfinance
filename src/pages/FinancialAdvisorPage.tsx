@@ -37,7 +37,7 @@ import type {
   SavingsGoalContribution,
 } from '../types/finance'
 import { currentMonthValue } from '../utils/format'
-import { buildAdvisorInsights, type FinancialAdvisorData } from '../utils/financialAdvisor'
+import { buildAdvisorAutoInsights, buildAdvisorInsights, type FinancialAdvisorData } from '../utils/financialAdvisor'
 import { detectRecurringExpenses } from '../utils/recurringExpenses'
 
 export function FinancialAdvisorPage() {
@@ -153,40 +153,49 @@ export function FinancialAdvisorPage() {
     ],
   )
   const insights = useMemo(() => buildAdvisorInsights(advisorData), [advisorData])
+  const autoInsights = useMemo(() => buildAdvisorAutoInsights(advisorData), [advisorData])
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-100">
-            Asesor financiero
-          </p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-normal sm:text-3xl">
-            Orientacion basada en tus datos
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm text-muted dark:text-slate-400">
-            Funciona localmente con reglas simples. No usa IA externa ni envia tus datos a servicios externos.
-          </p>
-        </div>
-        <div className="flex items-start gap-2 rounded-lg border border-brand-500/20 bg-brand-50 px-3 py-2 text-sm text-brand-700 dark:border-brand-400/20 dark:bg-brand-500/10 dark:text-brand-100">
-          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>Orientacion general, no sustituye asesoria financiera profesional.</span>
+    <div className="space-y-4 sm:space-y-5">
+      <div className="premium-card overflow-hidden rounded-lg border border-line bg-white shadow-sm dark:border-slate-800/80 dark:bg-slate-900/90">
+        <div className="bg-gradient-to-br from-brand-50 via-white to-slate-50 p-4 dark:from-brand-500/10 dark:via-slate-900 dark:to-slate-900 sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-100 sm:text-sm">
+                Asesor financiero
+              </p>
+              <h2 className="mt-1 text-xl font-semibold tracking-normal sm:text-3xl">
+                Orientacion basada en tus datos
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                Respuestas por reglas locales, con contexto temporal de esta conversacion. No envia datos a servicios externos.
+              </p>
+            </div>
+            <div className="flex items-start gap-2 rounded-lg border border-brand-500/20 bg-white/80 px-3 py-2 text-xs leading-5 text-brand-700 dark:border-brand-400/20 dark:bg-slate-950/70 dark:text-brand-100 sm:text-sm">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>Orientacion general; no sustituye asesoria financiera profesional.</span>
+            </div>
+          </div>
         </div>
       </div>
 
       {error ? <StatusMessage message={error} /> : null}
 
       {loading ? (
-        <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-          <SkeletonList rows={1} itemHeight="h-[640px]" />
+        <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+          <SkeletonList rows={1} itemHeight="h-[560px]" />
           <SkeletonStats count={5} />
         </div>
       ) : (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <AdvisorChat data={advisorData} />
-          <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <aside className="order-first space-y-3 xl:order-last xl:sticky xl:top-24 xl:self-start">
+            <div>
+              <h3 className="text-sm font-semibold text-ink dark:text-white sm:text-base">Lectura rapida</h3>
+              <p className="text-xs text-muted dark:text-slate-400">Indicadores compactos antes de preguntar.</p>
+            </div>
             <AdvisorInsightCards insights={insights} />
           </aside>
+          <AdvisorChat data={advisorData} autoInsights={autoInsights} />
         </div>
       )}
     </div>

@@ -20,20 +20,20 @@ function ToneIcon({ tone }: { tone: AdvisorInsight['tone'] }) {
 
 export function AdvisorInsightCards({ insights }: { insights: AdvisorInsight[] }) {
   return (
-    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+    <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-1 xl:gap-3">
       {insights.map((insight) => (
         <article
           key={insight.id}
-          className={clsx('rounded-lg border p-4 shadow-sm', toneClass(insight.tone))}
+          className={clsx('premium-card rounded-lg border p-3 shadow-sm sm:p-4', toneClass(insight.tone))}
         >
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5">
+          <div className="flex items-start gap-2 sm:gap-3">
+            <div className="mt-0.5 hidden sm:block">
               <ToneIcon tone={insight.tone} />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wide opacity-75">{insight.label}</p>
-              <p className="mt-1 truncate text-lg font-semibold">{insight.value}</p>
-              <p className="mt-1 text-sm leading-5 opacity-80">{insight.detail}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide opacity-75 sm:text-xs">{insight.label}</p>
+              <p className="mt-1 truncate text-sm font-semibold sm:text-lg">{insight.value}</p>
+              <p className="mt-1 line-clamp-2 text-xs leading-4 opacity-80 sm:text-sm sm:leading-5">{insight.detail}</p>
             </div>
           </div>
         </article>
