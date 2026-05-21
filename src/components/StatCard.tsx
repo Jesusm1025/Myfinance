@@ -19,7 +19,7 @@ export function StatCard({
   }
 
   return (
-    <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+    <article className="premium-card rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/90 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-muted dark:text-slate-400">{title}</p>

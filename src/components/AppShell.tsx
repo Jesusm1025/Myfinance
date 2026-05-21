@@ -91,8 +91,8 @@ export function AppShell() {
   }, [location.pathname])
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-paper text-ink dark:bg-slate-950 dark:text-slate-100">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 flex-col border-r border-line bg-white px-4 py-5 shadow-soft dark:border-slate-800 dark:bg-slate-900 lg:flex">
+    <div className="min-h-screen overflow-x-hidden bg-paper text-ink dark:bg-[#0b1220] dark:text-slate-100">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 flex-col border-r border-line bg-white px-4 py-5 shadow-soft dark:border-slate-800/80 dark:bg-slate-900/95 lg:flex">
         <div className="flex items-center gap-3">
           <div className="grid h-11 w-11 place-items-center rounded-lg bg-brand-600 text-lg font-bold text-white">
             M
@@ -148,7 +148,7 @@ export function AppShell() {
       </aside>
 
       <div className="lg:pl-72">
-        <header className="sticky top-0 z-20 border-b border-line bg-white/90 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/85 sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-20 border-b border-line bg-white/90 px-4 py-3 backdrop-blur dark:border-slate-800/80 dark:bg-[#0b1220]/90 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-100">

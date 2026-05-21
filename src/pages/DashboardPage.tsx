@@ -18,6 +18,11 @@ import {
   AlertTriangle,
   ArrowDownCircle,
   ArrowUpCircle,
+  BadgeDollarSign,
+  CalendarClock,
+  Gauge,
+  PiggyBank,
+  ShieldAlert,
   Tags,
   Target,
   TrendingUp,
@@ -26,6 +31,7 @@ import {
 import clsx from 'clsx'
 import { useAuth } from '../auth/AuthProvider'
 import { EmptyState } from '../components/EmptyState'
+import { QuickWidgets, type QuickWidget } from '../components/QuickWidgets'
 import { RecurringExpensesPanel } from '../components/RecurringExpensesPanel'
 import { SkeletonList, SkeletonStats } from '../components/Skeleton'
 import { SmartAlertsPanel } from '../components/SmartAlertsPanel'
@@ -59,6 +65,16 @@ function sumByType(movements: Movement[], type: 'income' | 'expense') {
 
 function chartMonthLabel(month: string) {
   return format(parseISO(`${month}-01`), 'MMM yy', { locale: es })
+}
+
+function daysUntil(date: string | null | undefined) {
+  if (!date) return Number.POSITIVE_INFINITY
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const [year, monthNumber, day] = date.split('-').map(Number)
+  const target = new Date(year, monthNumber - 1, day)
+  target.setHours(0, 0, 0, 0)
+  return Math.ceil((target.getTime() - today.getTime()) / 86_400_000)
 }
 
 export function DashboardPage() {
@@ -238,31 +254,155 @@ export function DashboardPage() {
     return { totalSaved, averageProgress, mainGoal, closestGoal }
   }, [savingsGoals])
 
+  const topExpenseMovement = useMemo(() => {
+    return monthlyMovements
+      .filter((movement) => movement.type === 'expense')
+      .sort((a, b) => Number(b.amount) - Number(a.amount))[0]
+  }, [monthlyMovements])
+
+  const priorityDebt = useMemo(() => {
+    return debts
+      .filter((debt) => debt.status !== 'paid' && Number(debt.outstanding_balance) > 0)
+      .sort((a, b) => {
+        const aDue = daysUntil(a.due_date)
+        const bDue = daysUntil(b.due_date)
+        const aUrgency = a.status === 'overdue' || aDue < 0 ? -10_000 : aDue
+        const bUrgency = b.status === 'overdue' || bDue < 0 ? -10_000 : bDue
+        if (aUrgency !== bUrgency) return aUrgency - bUrgency
+        return Number(b.outstanding_balance) - Number(a.outstanding_balance)
+      })[0]
+  }, [debts])
+
+  const budgetRisk = useMemo(() => {
+    const categoryById = new Map(categories.map((category) => [category.id, category]))
+    const spentByCategory = new Map(categorySpend.map((item) => [item.categoryId, item.spent]))
+
+    return budgets
+      .filter((budget) => budget.category_id && Number(budget.amount) > 0)
+      .map((budget) => {
+        const spent = spentByCategory.get(String(budget.category_id)) ?? 0
+        const percent = (spent / Number(budget.amount)) * 100
+        const category = categoryById.get(String(budget.category_id))
+        return { budget, spent, percent, categoryName: category?.name ?? 'Categoria' }
+      })
+      .sort((a, b) => b.percent - a.percent)[0]
+  }, [budgets, categories, categorySpend])
+
+  const recommendedSavings = useMemo(() => {
+    if (monthlySummary.balance <= 0 || generalBalance <= 0) return 0
+    return Math.max(0, Math.min(monthlySummary.balance * 0.3, generalBalance * 0.25))
+  }, [generalBalance, monthlySummary.balance])
+
+  const quickWidgets = useMemo<QuickWidget[]>(() => [
+    {
+      id: 'highest-expense',
+      label: 'Gasto mas alto',
+      value: topExpenseMovement ? formatMoney(Number(topExpenseMovement.amount)) : 'Sin gastos',
+      detail: topExpenseMovement
+        ? topExpenseMovement.description || topExpenseMovement.category?.name || 'Movimiento del mes'
+        : 'No hay gastos en el mes seleccionado.',
+      icon: BadgeDollarSign,
+      tone: topExpenseMovement ? 'coral' : 'slate',
+    },
+    {
+      id: 'priority-debt',
+      label: 'Deuda prioritaria',
+      value: priorityDebt?.name ?? 'Sin deuda abierta',
+      detail: priorityDebt
+        ? `${formatMoney(Number(priorityDebt.outstanding_balance))} pendiente${priorityDebt.due_date ? ` - vence ${formatDate(priorityDebt.due_date)}` : ''}`
+        : 'No hay saldos pendientes registrados.',
+      icon: ShieldAlert,
+      tone: priorityDebt ? 'gold' : 'brand',
+    },
+    {
+      id: 'closest-goal',
+      label: 'Meta cercana',
+      value: savingsGoalsSummary.closestGoal?.name ?? savingsGoalsSummary.mainGoal?.name ?? 'Sin meta activa',
+      detail: savingsGoalsSummary.closestGoal?.target_date
+        ? `Objetivo: ${formatDate(savingsGoalsSummary.closestGoal.target_date)}`
+        : `${Math.round(savingsGoalsSummary.averageProgress)}% de progreso promedio.`,
+      icon: Target,
+      tone: savingsGoalsSummary.closestGoal ? 'brand' : 'slate',
+    },
+    {
+      id: 'budget-risk',
+      label: 'Presupuesto comprometido',
+      value: budgetRisk ? budgetRisk.categoryName : 'Sin alertas',
+      detail: budgetRisk
+        ? `${Math.round(budgetRisk.percent)}% usado: ${formatMoney(budgetRisk.spent)} de ${formatMoney(Number(budgetRisk.budget.amount))}`
+        : 'Los presupuestos del mes se mantienen tranquilos.',
+      icon: Gauge,
+      tone: budgetRisk && budgetRisk.percent >= 100 ? 'coral' : budgetRisk && budgetRisk.percent >= 80 ? 'gold' : 'brand',
+    },
+    {
+      id: 'available-balance',
+      label: 'Balance disponible',
+      value: formatMoney(generalBalance),
+      detail: 'Calculado desde Cuentas, movimientos y transferencias.',
+      icon: Wallet,
+      tone: generalBalance >= 0 ? 'brand' : 'coral',
+    },
+    {
+      id: 'recommended-savings',
+      label: 'Ahorro recomendado',
+      value: formatMoney(recommendedSavings),
+      detail: recommendedSavings > 0
+        ? 'Monto conservador sugerido desde el balance positivo.'
+        : 'Primero estabiliza gastos o deuda antes de separar ahorro.',
+      icon: PiggyBank,
+      tone: recommendedSavings > 0 ? 'brand' : 'slate',
+    },
+  ], [
+    budgetRisk,
+    generalBalance,
+    priorityDebt,
+    recommendedSavings,
+    savingsGoalsSummary.averageProgress,
+    savingsGoalsSummary.closestGoal,
+    savingsGoalsSummary.mainGoal,
+    topExpenseMovement,
+  ])
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-100">
-            Dashboard financiero
-          </p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-normal sm:text-3xl">
-            Resumen de tus finanzas
-          </h2>
+    <div className="space-y-6">
+      <div className="premium-card overflow-hidden rounded-lg border border-line bg-white shadow-sm dark:border-slate-800/80 dark:bg-slate-900/90">
+        <div className="border-b border-line bg-gradient-to-br from-brand-50 via-white to-slate-50 px-4 py-5 dark:border-slate-800 dark:from-brand-500/10 dark:via-slate-900 dark:to-slate-900 sm:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-100">
+                Dashboard financiero
+              </p>
+              <h2 className="mt-1 text-2xl font-semibold tracking-normal sm:text-3xl">
+                Resumen de tus finanzas
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                Lectura rapida del mes, alertas y prioridades para tomar decisiones sin entrar a cada modulo.
+              </p>
+            </div>
+            <label className="w-full sm:w-56">
+              <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                <CalendarClock className="h-4 w-4" />
+                Mes visible
+              </span>
+              <input
+                type="month"
+                value={month}
+                onChange={(event) => setMonth(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2.5 text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950/80 dark:text-white dark:focus:ring-brand-500/20"
+              />
+            </label>
+          </div>
         </div>
-        <label className="w-full sm:w-56">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Mes visible</span>
-          <input
-            type="month"
-            value={month}
-            onChange={(event) => setMonth(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2.5 text-ink outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-brand-500/20"
-          />
-        </label>
+        <div className="grid gap-3 px-4 py-4 sm:grid-cols-3 sm:px-6">
+          <SmallMetric label="Balance mensual" value={formatMoney(monthlySummary.balance)} tone={monthlySummary.balance >= 0 ? 'income' : 'expense'} />
+          <SmallMetric label="Movimientos del mes" value={String(monthlyMovements.length)} />
+          <SmallMetric label="Alertas activas" value={loading ? '...' : String(smartAlerts.length)} tone={smartAlerts.length ? 'warning' : 'income'} />
+        </div>
       </div>
 
       {error ? <StatusMessage message={error} /> : null}
       {expensesBeatIncome ? (
-        <div className="flex items-start gap-3 rounded-lg border border-coral-500/30 bg-coral-50 px-4 py-3 text-sm text-coral-600 dark:border-coral-500/30 dark:bg-coral-500/10 dark:text-coral-400">
+        <div className="premium-card flex items-start gap-3 rounded-lg border border-coral-500/30 bg-coral-50 px-4 py-3 text-sm text-coral-600 dark:border-coral-500/30 dark:bg-coral-500/10 dark:text-coral-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>Alerta: tus gastos del mes superan tus ingresos por {formatMoney(monthlySummary.expenses - monthlySummary.income)}.</span>
         </div>
@@ -275,6 +415,18 @@ export function DashboardPage() {
           compact
           maxItems={5}
         />
+      ) : null}
+
+      {!loading ? (
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-lg font-semibold text-ink dark:text-white">Widgets rapidos</h3>
+            <p className="text-sm text-muted dark:text-slate-400">
+              Prioridades compactas para revisar en segundos.
+            </p>
+          </div>
+          <QuickWidgets widgets={quickWidgets} />
+        </section>
       ) : null}
 
       {loading ? (
@@ -300,7 +452,7 @@ export function DashboardPage() {
       )}
 
       {!loading && savingsGoals.length ? (
-        <section className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+        <section className="premium-card rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/90 sm:p-5">
           <div className="mb-4 flex items-center gap-3">
             <div className="rounded-lg bg-brand-50 p-2 text-brand-700 dark:bg-brand-500/15 dark:text-brand-100">
               <Target className="h-5 w-5" />
@@ -320,7 +472,7 @@ export function DashboardPage() {
       ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
-        <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+        <article className="premium-card rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/90 sm:p-5">
           <div className="mb-4">
             <h3 className="text-lg font-semibold">Gastos por categoria</h3>
             <p className="text-sm text-muted dark:text-slate-400">
@@ -348,7 +500,7 @@ export function DashboardPage() {
           )}
         </article>
 
-        <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+        <article className="premium-card rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/90 sm:p-5">
           <div className="mb-4">
             <h3 className="text-lg font-semibold">Ingresos vs gastos por mes</h3>
             <p className="text-sm text-muted dark:text-slate-400">Hasta los ultimos 12 meses con movimientos</p>
@@ -376,7 +528,7 @@ export function DashboardPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-        <article className="rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+        <article className="premium-card rounded-lg border border-line bg-white p-4 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/90 sm:p-5">
           <h3 className="text-lg font-semibold">Categoria donde mas gastaste</h3>
           {topExpenseCategory ? (
             <div className="mt-4 flex items-center justify-between gap-4 rounded-lg border border-line p-4 dark:border-slate-800">
@@ -398,7 +550,7 @@ export function DashboardPage() {
           )}
         </article>
 
-        <article className="rounded-lg border border-line bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <article className="premium-card rounded-lg border border-line bg-white shadow-sm dark:border-slate-800/80 dark:bg-slate-900/90">
           <div className="border-b border-line p-4 dark:border-slate-800 sm:p-5">
             <h3 className="text-lg font-semibold">Ultimos 5 movimientos</h3>
             <p className="text-sm text-muted dark:text-slate-400">Ordenados del mas reciente al mas antiguo</p>
@@ -451,11 +603,29 @@ export function DashboardPage() {
   )
 }
 
-function SmallMetric({ label, value }: { label: string; value: string }) {
+function SmallMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone?: 'income' | 'expense' | 'warning'
+}) {
   return (
-    <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950">
+    <div className="rounded-lg bg-slate-50/80 p-3 ring-1 ring-slate-900/5 dark:bg-slate-950/70 dark:ring-white/5">
       <p className="text-xs text-muted dark:text-slate-400">{label}</p>
-      <p className="mt-1 truncate font-semibold text-ink dark:text-white">{value}</p>
+      <p
+        className={clsx(
+          'mt-1 truncate font-semibold',
+          tone === 'income' && 'text-brand-700 dark:text-brand-100',
+          tone === 'expense' && 'text-coral-600 dark:text-coral-300',
+          tone === 'warning' && 'text-gold-600 dark:text-gold-300',
+          !tone && 'text-ink dark:text-white',
+        )}
+      >
+        {value}
+      </p>
     </div>
   )
 }
